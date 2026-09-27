@@ -1,168 +1,55 @@
-# Bilibili Accelerator
+# BiliCDNSelector
 
 [简体中文](README.md) | [English](README.en.md)
 
-[![CI](https://github.com/stabruriss/bilibili-accelerator/actions/workflows/ci.yml/badge.svg)](https://github.com/stabruriss/bilibili-accelerator/actions/workflows/ci.yml)
+[![CI](https://github.com/lsy223622/BiliCDNSelector/actions/workflows/ci.yml/badge.svg)](https://github.com/lsy223622/BiliCDNSelector/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-00aeec.svg)](LICENSE)
-[![Install userscript](https://img.shields.io/badge/Install-userscript-00aeec.svg)](https://raw.githubusercontent.com/stabruriss/bilibili-accelerator/main/bilibili-accelerator.user.js)
+[![Install userscript](https://img.shields.io/badge/Install-userscript-00aeec.svg)](https://raw.githubusercontent.com/lsy223622/BiliCDNSelector/main/BiliCDNSelector.user.js)
 
-This is a userscript for the frustrating case where your connection is fast
-enough, but Bilibili video playback still stutters or buffers.
+BiliCDNSelector is a userscript that benchmarks and selects CDN routes for Bilibili web videos. It derives a set of domestic official UPOS candidates from the current video's valid signed URL, benchmarks them with small Range requests, and places better-performing routes ahead of the player's native fallbacks.
 
-- Includes four commonly useful CDN routes and accelerates playback by
-  switching the video CDN.
-- Benchmarks routes automatically and can select the best-performing CDN.
-- Lets you choose a CDN manually or turn automatic testing on and off.
-- Select “Bilibili Original” to disable route switching and restore Bilibili's
-  untouched play URLs.
-
-This project is not affiliated with or officially endorsed by Bilibili.
-
-## Screenshot
-
-![Bilibili Accelerator route control panel on a Bilibili video page](docs/images/control-panel.png)
+This project is not affiliated with or endorsed by Bilibili.
 
 ## Installation
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
-2. Click
-   **[Install Bilibili Accelerator](https://raw.githubusercontent.com/stabruriss/bilibili-accelerator/main/bilibili-accelerator.user.js)**.
-3. Disable the legacy `Bilibili Auto CDN - Stable` script, along with any
-   other userscript that rewrites Bilibili CDN addresses.
-4. Open or refresh any Bilibili video page.
+2. [Install BiliCDNSelector](https://raw.githubusercontent.com/lsy223622/BiliCDNSelector/main/BiliCDNSelector.user.js).
+3. Disable other userscripts that rewrite Bilibili playback URLs.
+4. Open or refresh a Bilibili video page.
 
-The script includes an `@updateURL`, so Tampermonkey can check the repository's
-`main` branch for updates.
+`@updateURL` points to this repository's `main` branch.
 
-## What problem does it solve?
+## Route selection
 
-On some overseas networks, `curl` or ordinary download tests may be fast while
-the browser player still suffers intermittent DASH-fragment timeouts and
-buffering. Pinning one CDN is not always reliable because:
+Bilibili's playurl API may supply only a small native CDN set. The script retains those exact URLs and derives 14 domestic CDN candidates from a compatible ordinary signed UPOS URL by changing only the hostname. The path, query order, escaping, and signature stay byte-for-byte intact. It then tests two 256 KiB Ranges per route serially and ranks routes using health metrics including success rate and worst completion time. Native Bilibili URLs remain in the playback fallback chain.
 
-- Bilibili's API returns different native primary and fallback routes for
-  different videos.
-- Akamai URLs depend on native `hdnts` signatures and cannot be created by
-  replacing only the hostname.
-- Edge nodes and real network paths behind the same hostname can change over
-  time.
-- Peak Mbps alone does not capture timeouts, time to first byte, or the slowest
-  request.
+The presets are Ali, Alib, Alio1, Cos, Cosb, Coso1, HW, HWB, HWO1, 08c, 08h, 08ct, TF-HW, and TF-TX. The panel offers Auto, Bilibili Original, and each domestic route. If a manual route cannot be generated safely, playback keeps the native URLs.
 
-Bilibili Accelerator performs small Range tests against real URLs that the
-current video can access. It then uses the cached health results when arranging
-the next play URL, without blocking video startup.
+A complete successful benchmark can cover up to 16 routes: 14 presets and two native routes. At two 256 KiB Ranges each, that is about 8 MiB. Transfers are lower with fewer candidates or cached results. Successful results are cached for four hours, failed results for 15 minutes, and the preferred route receives lightweight verification at most once every 15 minutes. Background probing does not block initial playback. The panel's Retest action forces a new test of relevant routes.
 
-## Safety boundaries
+## Safety and privacy
 
-- Preserves the complete native primary and fallback URLs returned by
-  Bilibili's API.
-- Uses Akamai only when the API supplies the original URL with its signature.
-- Generates ordinary UPOS hosts only from a code-level allowlist; it never
-  accepts arbitrary hosts injected by the page or user.
-- Demotes PCDN addresses behind official CDN routes.
-- Restores Bilibili's original routes when every benchmark fails.
-- Never stores complete media URLs, signatures, cookies, or tokens.
-- Sends no analytics, telemetry, or user data.
+- Only compatible ordinary UPOS URLs can be synthesis donors. Akamai, PCDN, MCDN, IP, 302 style, and special-port routes cannot serve as donors.
+- The script never synthesizes Akamai URLs. API-provided Akamai and other native URLs remain available for playback fallback.
+- If all synthetic routes fail, the original Bilibili primary and backup order is restored.
+- Local storage contains settings, panel position, and per-host health summaries, never complete signed media URLs, credentials, cookies, or tokens.
+- The script sends no telemetry or network statistics.
 
-## Control panel
-
-Video pages display a draggable, translucent lightning dot:
-
-- Blue: the script is routing playback.
-- Yellow: waiting for a safe benchmark window.
-- Red: a benchmark or settings save failed.
-- Gray: using “Bilibili Original.”
-
-Click the dot to open the `Bilibili Accelerator` panel. Available modes are:
-
-- **Automatic**: reorder routes using valid benchmark results.
-- **Bilibili Original**: leave play URLs completely untouched; this is also the
-  panel's master off mode.
-- **Cosov / Aliov / Hong Kong EQ**: put the selected route first while
-  retaining native routes as fallbacks.
-- **Native Akamai**: available only when the current video's API actually
-  returns a signed Akamai URL.
-
-After choosing a mode, click “Refresh and apply.” Every concrete CDN route
-shows Mbps, TTFB, success state, and the age of its last full benchmark.
-
-The “Automatic testing” switch at the bottom controls background benchmarks
-only; it does not change the selected route:
-
-- On: when cached health needs verification or expires, test in the background
-  after a new play URL appears.
-- Off: do not start background tests; “Retest” can still force a full manual
-  benchmark.
-
-## Automatic selection
-
-A full benchmark reads two 256 KiB Ranges from each candidate route,
-sequentially:
-
-1. A route is healthy only if both Ranges complete.
-2. Routes are compared by success ratio first, then by the slower of the two
-   completion times.
-3. If two healthy routes differ by no more than 15%, preserve Bilibili's
-   original API order to avoid route flapping.
-4. Mbps is an observational throughput metric; it does not select the winner
-   on its own.
-
-Cache and verification behavior:
-
-- Successful full benchmarks are cached for 4 hours.
-- Failed results are cached for 15 minutes; only that failed route is retested
-  after expiry.
-- The actual preferred route receives at most one lightweight, single-Range
-  verification every 15 minutes.
-- A failed or significantly slower lightweight verification promotes the work
-  to a full benchmark.
-- Testing begins after a 1.2-second delay and waits until the video is paused
-  or has at least 15 seconds of buffered playback.
-
-## Permissions and privacy
-
-The userscript uses `@grant none` and matches only:
-
-- `https://www.bilibili.com/*`
-- `https://m.bilibili.com/*`
-
-It sends small Range requests to Bilibili's native CDNs and the built-in
-official UPOS candidates. In `localStorage`, it stores only the selected mode,
-the automatic-testing preference, launcher coordinates, and per-host summaries
-of attempts, speeds, TTFB, worst completion time, and timestamps.
-
-Do not paste complete media URLs into an issue. They may contain short-lived
-signatures or other sensitive parameters. Keep only the hostname and remove
-the query string.
-
-## Compatibility
-
-The primary development and test environment is a desktop Chromium browser
-with Tampermonkey. Other browsers or userscript managers may work, but they are
-not currently official compatibility targets.
-
-This script handles CDN addresses only. It does not change player settings such
-as `nc_disable / rp_disable / p2p_disable`.
+The userscript uses `@grant none` and matches `https://www.bilibili.com/*` and `https://m.bilibili.com/*`. Desktop Chromium with Tampermonkey is the primary target.
 
 ## Local development
 
-Node.js 18 or newer is required. There are no runtime dependencies to install:
+Node.js 18 or newer is required. There are no runtime dependencies:
 
 ```bash
 npm run check
 npm test
 ```
 
-Main files:
+`BiliCDNSelector.user.js` is directly installable. `BiliCDNSelector.test.js` covers URLs, safety, benchmark caching, and browser interception. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Never paste a complete signed media URL into an issue.
 
-- `bilibili-accelerator.user.js`: the directly installable userscript.
-- `bilibili-accelerator.test.js`: tests for URL handling, safety boundaries,
-  caching, and browser interception.
+## Credits and license
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Report security
-issues privately by following [SECURITY.md](SECURITY.md).
+This project is based on [stabruriss/bilibili-accelerator](https://github.com/stabruriss/bilibili-accelerator), which provides the browser interception, candidate routing, benchmarking, ranking, fallback, and UI foundation. The domestic CDN host catalog was derived from [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus), specifically `lib/models/common/video/cdn_type.dart`.
 
-## License
-
-[MIT](LICENSE) © 2026 stabruriss
+[MIT](LICENSE) © 2026 stabruriss. The upstream copyright notice is preserved.

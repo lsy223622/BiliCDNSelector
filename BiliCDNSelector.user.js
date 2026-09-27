@@ -1,16 +1,16 @@
 // ==UserScript==
-// @name         Bilibili Accelerator
-// @name:zh-CN   Bilibili Accelerator
-// @namespace    https://github.com/stabruriss/bilibili-accelerator
-// @version      0.2.5
-// @description  Test real signed video ranges in the background, then safely reorder Bilibili's native CDN URLs without forging Akamai signatures.
-// @description:zh-CN 后台实测当前视频的真实签名分片，安全重排主备 CDN；不伪造 Akamai 签名，不制造并发取消风暴。
-// @author       stabruriss
+// @name         BiliCDNSelector
+// @name:zh-CN   BiliCDNSelector
+// @namespace    https://github.com/lsy223622/BiliCDNSelector
+// @version      0.1.0
+// @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
+// @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
+// @author       stabruriss, lsy223622
 // @license      MIT
-// @homepageURL  https://github.com/stabruriss/bilibili-accelerator
-// @supportURL   https://github.com/stabruriss/bilibili-accelerator/issues
-// @downloadURL  https://raw.githubusercontent.com/stabruriss/bilibili-accelerator/main/bilibili-accelerator.user.js
-// @updateURL    https://raw.githubusercontent.com/stabruriss/bilibili-accelerator/main/bilibili-accelerator.user.js
+// @homepageURL  https://github.com/lsy223622/BiliCDNSelector
+// @supportURL   https://github.com/lsy223622/BiliCDNSelector/issues
+// @downloadURL  https://raw.githubusercontent.com/lsy223622/BiliCDNSelector/main/BiliCDNSelector.user.js
+// @updateURL    https://raw.githubusercontent.com/lsy223622/BiliCDNSelector/main/BiliCDNSelector.user.js
 // @match        https://www.bilibili.com/*
 // @match        https://m.bilibili.com/*
 // @run-at       document-start
@@ -38,16 +38,15 @@
     core.install(root);
 })(
     typeof unsafeWindow !== 'undefined' ? unsafeWindow : globalThis,
-    function createBiliAutoCdn() {
+    function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.2.5';
+        const VERSION = '0.1.0';
         const CACHE_VERSION = 1;
-        const CACHE_KEY = 'kota.biliAutoCdn.health.v1';
-        const ENABLED_KEY = 'kota.biliAutoCdn.enabled';
-        const SETTINGS_KEY = 'kota.biliAutoCdn.settings.v1';
-        const UI_POSITION_KEY = 'kota.biliAutoCdn.uiPosition.v1';
-        const NATIVE_AKAMAI_ROUTE = 'native-akamai';
+        const CACHE_KEY = 'biliCdnSelector.health.v1';
+        const ENABLED_KEY = 'biliCdnSelector.enabled';
+        const SETTINGS_KEY = 'biliCdnSelector.settings.v1';
+        const UI_POSITION_KEY = 'biliCdnSelector.uiPosition.v1';
         const HEALTH_TTL_MS = 4 * 60 * 60 * 1000;
         const FAILED_HEALTH_TTL_MS = 15 * 60 * 1000;
         const HEALTH_VERIFY_INTERVAL_MS = 15 * 60 * 1000;
@@ -60,27 +59,60 @@
         ]);
         const VERIFY_SLOW_MIN_MS = 750;
         const VERIFY_SLOW_FACTOR = 3;
-        const MAX_PROBE_HOSTS = 5;
+        const MAX_PROBE_HOSTS = 16;
         const MAX_ORIGINAL_PROBE_HOSTS = 2;
-        const MAX_PRESET_PROBE_HOSTS = 3;
+        const MAX_PRESET_PROBE_HOSTS = 14;
         const UI_LAUNCHER_SIZE = 30;
         const UI_VIEWPORT_MARGIN = 8;
         const UI_DRAG_THRESHOLD_PX = 5;
 
-        // These are generic UPOS targets verified to accept an ordinary signed
-        // bilivideo URL. Akamai is deliberately absent: it needs an API-native
-        // hdnts URL and may never be synthesized by swapping a hostname.
-        const SAFE_GENERIC_HOSTS = Object.freeze([
-            'upos-sz-mirrorcosov.bilivideo.com',
-            'upos-sz-mirroraliov.bilivideo.com',
-            'cn-hk-eq-01-03.bilivideo.com'
+        // Domestic UPOS hosts from PiliPlus lib/models/common/video/cdn_type.dart.
+        const DOMESTIC_CDN_ROUTES = Object.freeze([
+            { id: 'ali', label: 'Ali', provider: 'Alibaba', host: 'upos-sz-mirrorali.bilivideo.com' },
+            { id: 'alib', label: 'Alib', provider: 'Alibaba', host: 'upos-sz-mirroralib.bilivideo.com' },
+            { id: 'alio1', label: 'Alio1', provider: 'Alibaba', host: 'upos-sz-mirroralio1.bilivideo.com' },
+            { id: 'cos', label: 'Cos', provider: 'Tencent', host: 'upos-sz-mirrorcos.bilivideo.com' },
+            { id: 'cosb', label: 'Cosb', provider: 'Tencent', host: 'upos-sz-mirrorcosb.bilivideo.com' },
+            { id: 'coso1', label: 'Coso1', provider: 'Tencent', host: 'upos-sz-mirrorcoso1.bilivideo.com' },
+            { id: 'hw', label: 'HW', provider: 'Huawei', host: 'upos-sz-mirrorhw.bilivideo.com' },
+            { id: 'hwb', label: 'HWB', provider: 'Huawei', host: 'upos-sz-mirrorhwb.bilivideo.com' },
+            { id: 'hwo1', label: 'HWO1', provider: 'Huawei', host: 'upos-sz-mirrorhwo1.bilivideo.com' },
+            { id: '08c', label: '08c', provider: 'Huawei', host: 'upos-sz-mirror08c.bilivideo.com' },
+            { id: '08h', label: '08h', provider: 'Huawei', host: 'upos-sz-mirror08h.bilivideo.com' },
+            { id: '08ct', label: '08ct', provider: 'Huawei', host: 'upos-sz-mirror08ct.bilivideo.com' },
+            { id: 'tf_hw', label: 'TF-HW', provider: 'Huawei', host: 'upos-tf-all-hw.bilivideo.com' },
+            { id: 'tf_tx', label: 'TF-TX', provider: 'Tencent', host: 'upos-tf-all-tx.bilivideo.com' }
+        ]);
+        const DOMESTIC_CDN_HOSTS = Object.freeze(
+            DOMESTIC_CDN_ROUTES.map(route => route.host)
+        );
+
+        const ROUTE_DEFS = Object.freeze([
+            {
+                id: 'auto',
+                label: '自动选择',
+                short: '自动',
+                description: ''
+            },
+            {
+                id: 'original',
+                label: 'B站原始',
+                short: '原始',
+                description: '完全不修改播放地址'
+            },
+            ...DOMESTIC_CDN_ROUTES.map(route => ({
+                id: route.host,
+                label: route.label,
+                short: route.label,
+                description: route.provider
+            }))
         ]);
 
         const DEFAULT_SETTINGS = Object.freeze({
             version: 1,
             enabled: true,
             mode: 'auto',
-            manualTarget: SAFE_GENERIC_HOSTS[0],
+            manualTarget: DOMESTIC_CDN_HOSTS[0],
             autoProbe: true
         });
 
@@ -88,10 +120,7 @@
             const input =
                 value && typeof value === 'object' ? value : {};
             const mode = input.mode === 'manual' ? 'manual' : 'auto';
-            const allowedManualTargets = [
-                NATIVE_AKAMAI_ROUTE,
-                ...SAFE_GENERIC_HOSTS
-            ];
+            const allowedManualTargets = DOMESTIC_CDN_HOSTS;
             return {
                 version: DEFAULT_SETTINGS.version,
                 enabled:
@@ -378,7 +407,7 @@
             };
         }
 
-        function buildCandidates(originals, safeHosts = SAFE_GENERIC_HOSTS) {
+        function buildCandidates(originals, safeHosts = DOMESTIC_CDN_HOSTS) {
             const candidates = [];
             const seenUrls = new Set();
 
@@ -399,6 +428,7 @@
             const donor = originals.find(url => {
                 const host = hostOf(url);
                 return (
+                    host.startsWith('upos-') &&
                     host.endsWith('.bilivideo.com') &&
                     !isExplicitPcdn(url) &&
                     isMediaUrl(url)
@@ -545,10 +575,18 @@
                 item => item.fresh && item.record?.ok
             );
 
-            // If every result we have is bad, do not invent a new route: retain
-            // Bilibili's exact original fallback chain.
-            if (hasFreshResult && !hasFreshSuccess) {
-                return coldOrder(candidates, false);
+            const synthetic = annotated.filter(
+                item => item.candidate.synthetic
+            );
+            const allSyntheticFailed =
+                synthetic.length > 0 &&
+                synthetic.every(item => item.fresh && !item.record?.ok);
+
+            // Failed synthetic routes must not displace the native chain.
+            if (allSyntheticFailed || (hasFreshResult && !hasFreshSuccess)) {
+                return candidates
+                    .filter(candidate => candidate.original)
+                    .sort((a, b) => a.originalIndex - b.originalIndex);
             }
 
             if (!hasFreshSuccess) {
@@ -600,34 +638,15 @@
                 .map(item => item.candidate);
         }
 
-        function isNativeSignedAkamai(candidate) {
-            return !!(
-                candidate?.original &&
-                isAkamaiHost(candidate.host) &&
-                /(?:^|[?&])hdnts=[^&]+/i.test(
-                    parseUrl(candidate.url)?.search || ''
-                )
-            );
-        }
-
         function rankManualCandidates(candidates, manualTarget) {
             const cold = coldOrder(candidates, true);
-            let selected;
-
-            if (manualTarget === NATIVE_AKAMAI_ROUTE) {
-                selected = cold.filter(isNativeSignedAkamai);
-            } else if (SAFE_GENERIC_HOSTS.includes(manualTarget)) {
-                selected = cold.filter(
-                    candidate =>
-                        !candidate.pcdn &&
-                        candidate.host === manualTarget
-                );
-            } else {
-                return {
-                    ordered: coldOrder(candidates, false),
-                    matched: false
-                };
-            }
+            const selected = DOMESTIC_CDN_HOSTS.includes(manualTarget)
+                ? cold.filter(
+                      candidate =>
+                          !candidate.pcdn &&
+                          candidate.host === manualTarget
+                  )
+                : [];
 
             if (!selected.length) {
                 return {
@@ -717,7 +736,7 @@
 
         function planFromCandidates(
             candidates,
-            safeHosts = SAFE_GENERIC_HOSTS,
+            safeHosts = DOMESTIC_CDN_HOSTS,
             preferredHost = ''
         ) {
             const byHost = new Map();
@@ -772,28 +791,16 @@
                 return false;
             }
 
-            // Reserve two API-native slots. Prefer one ordinary UPOS donor and
-            // one native Akamai route when both exist. The actual preferred
-            // route is a hard reservation even if it was the third API backup.
+            // Keep a cached preferred route, then fill native slots with
+            // ordinary UPOS routes before considering native Akamai.
             const preferred = byHost.get(preferredHost);
-            add(preferred);
-            const ordinaryOriginal = originals.find(
-                route => !route.nativeAkamai
-            );
-            const nativeAkamai = originals.find(
-                route => route.nativeAkamai
-            );
-            if (preferred?.original) {
-                add(
-                    preferred.nativeAkamai
-                        ? ordinaryOriginal
-                        : nativeAkamai
-                );
-            } else {
-                add(ordinaryOriginal);
-                add(nativeAkamai);
+            if (preferred && !preferred.nativeAkamai) {
+                add(preferred);
             }
-            for (const route of originals) {
+            const prioritizedOriginals = originals
+                .filter(route => !route.nativeAkamai)
+                .concat(originals.filter(route => route.nativeAkamai));
+            for (const route of prioritizedOriginals) {
                 if (
                     selected.filter(item => item.original).length >=
                     MAX_ORIGINAL_PROBE_HOSTS
@@ -827,7 +834,6 @@
                 entryCount: 0,
                 probePlan: [],
                 availableHosts: [],
-                nativeAkamaiAvailable: false,
                 winnerHost: '',
                 usedFreshHealth: false,
                 manualMatched: 0,
@@ -842,7 +848,7 @@
                 return result;
             }
 
-            const safeHosts = options.safeHosts || SAFE_GENERIC_HOSTS;
+            const safeHosts = options.safeHosts || DOMESTIC_CDN_HOSTS;
             const mode = options.mode === 'manual' ? 'manual' : 'auto';
             const manualTarget =
                 options.manualTarget || DEFAULT_SETTINGS.manualTarget;
@@ -857,9 +863,6 @@
                     ...result.availableHosts,
                     ...candidates.map(candidate => candidate.host)
                 ]);
-                result.nativeAkamaiAvailable =
-                    result.nativeAkamaiAvailable ||
-                    candidates.some(isNativeSignedAkamai);
 
                 let ordered;
                 let manualMatched = false;
@@ -1093,7 +1096,7 @@
         function install(root) {
             if (
                 !root ||
-                root.__BILI_AUTO_CDN_STABLE_INSTALLED__ ||
+                root.__BILI_CDN_SELECTOR_INSTALLED__ ||
                 typeof root.fetch !== 'function' ||
                 typeof root.XMLHttpRequest !== 'function'
             ) {
@@ -1106,46 +1109,7 @@
             const NativeHeaders = root.Headers;
             const nativeJsonParse = root.JSON.parse.bind(root.JSON);
             const nativeJsonStringify = root.JSON.stringify.bind(root.JSON);
-            const logPrefix = '[BiliAutoCDN]';
-            const ROUTE_DEFS = Object.freeze([
-                {
-                    id: 'auto',
-                    label: '自动选择',
-                    short: '自动',
-                    description: ''
-                },
-                {
-                    id: 'original',
-                    label: 'B站原始',
-                    short: '原始',
-                    description: '完全不修改播放地址'
-                },
-                {
-                    id: SAFE_GENERIC_HOSTS[0],
-                    label: 'Cosov',
-                    short: 'COSOV',
-                    description: '国际 UPOS'
-                },
-                {
-                    id: NATIVE_AKAMAI_ROUTE,
-                    label: '原生 Akamai',
-                    short: 'AKAMAI',
-                    description: '仅使用 API 原生签名'
-                },
-                {
-                    id: SAFE_GENERIC_HOSTS[1],
-                    label: 'Aliov',
-                    short: 'ALIOV',
-                    description: '阿里 UPOS'
-                },
-                {
-                    id: SAFE_GENERIC_HOSTS[2],
-                    label: '香港 EQ',
-                    short: 'HK EQ',
-                    description: '香港 UPOS'
-                }
-            ]);
-
+            const logPrefix = '[BiliCDNSelector]';
             const settings = loadSettings();
             const state = {
                 enabled: settings.enabled,
@@ -1167,7 +1131,6 @@
                 observedHost: '',
                 currentPlan: [],
                 availableHosts: [],
-                nativeAkamaiAvailable: false,
                 manualMatched: 0,
                 manualMissed: 0,
                 probeProgress: null,
@@ -1188,7 +1151,7 @@
                 ageTimer: null,
                 suppressLauncherClickUntil: 0
             };
-            root.__BILI_AUTO_CDN_STABLE_INSTALLED__ = true;
+            root.__BILI_CDN_SELECTOR_INSTALLED__ = true;
 
             function loadSettings() {
                 try {
@@ -1689,9 +1652,6 @@
                 if (exact) {
                     return exact;
                 }
-                if (isAkamaiHost(host)) {
-                    return routeDefinition(NATIVE_AKAMAI_ROUTE);
-                }
                 return null;
             }
 
@@ -1717,19 +1677,9 @@
                 }
                 if (
                     !state.enabled &&
-                    SAFE_GENERIC_HOSTS.includes(route.id)
+                    DOMESTIC_CDN_HOSTS.includes(route.id)
                 ) {
                     return { available: true, reason: '' };
-                }
-                if (route.id === NATIVE_AKAMAI_ROUTE) {
-                    return state.nativeAkamaiAvailable
-                        ? { available: true, reason: '' }
-                        : {
-                              available: false,
-                              reason: state.currentPlan.length
-                                  ? '本视频没有原生签名 Akamai'
-                                  : '打开视频后检测可用性'
-                          };
                 }
                 return state.availableHosts.includes(route.id)
                     ? { available: true, reason: '' }
@@ -1742,12 +1692,6 @@
             }
 
             function healthForRoute(route) {
-                if (route.id === NATIVE_AKAMAI_ROUTE) {
-                    const native = state.currentPlan.find(
-                        item => item.nativeAkamai
-                    );
-                    return native ? state.health[native.host] : null;
-                }
                 return state.health[route.id] || null;
             }
 
@@ -1805,7 +1749,7 @@
 
                     const radio = root.document.createElement('input');
                     radio.type = 'radio';
-                    radio.name = 'kota-cdn-route';
+                    radio.name = 'bili-cdn-selector-route';
                     radio.value = route.id;
 
                     const marker = root.document.createElement('span');
@@ -2081,12 +2025,7 @@
                     ) {
                         refs.meta.textContent = '';
                     } else {
-                        refs.meta.textContent =
-                            route.id === NATIVE_AKAMAI_ROUTE
-                                ? state.currentPlan.find(
-                                      item => item.nativeAkamai
-                                  )?.host || route.description
-                                : route.id;
+                        refs.meta.textContent = route.id;
                     }
                     refs.meta.title = refs.meta.textContent;
 
@@ -2134,7 +2073,7 @@
                 }
 
                 const host = root.document.createElement('div');
-                host.id = 'kota-bili-auto-cdn-control';
+                host.id = 'bili-cdn-selector-control';
                 Object.assign(host.style, {
                     all: 'initial',
                     position: 'fixed',
@@ -2533,16 +2472,16 @@
                             }
                         }
                     </style>
-                    <section class="panel" id="kota-cdn-panel"
+                    <section class="panel" id="bili-cdn-selector-panel"
                         data-ref="panel" role="dialog"
-                        aria-labelledby="kota-cdn-title" hidden>
+                        aria-labelledby="bili-cdn-selector-title" hidden>
                         <div class="instrument">
-                            <span>Bilibili Accelerator</span>
+                            <span>BiliCDNSelector</span>
                             <span>V${VERSION}</span>
                         </div>
                         <header class="panel__head">
                             <div class="title">
-                                <h2 id="kota-cdn-title">
+                                <h2 id="bili-cdn-selector-title">
                                     切换B站视频线路
                                 </h2>
                             </div>
@@ -2585,7 +2524,7 @@
                     <button class="launcher" data-ref="launcher" type="button"
                         aria-label="打开视频线路控制面板"
                         title="拖动移动；点击打开线路面板"
-                        aria-expanded="false" aria-controls="kota-cdn-panel">
+                        aria-expanded="false" aria-controls="bili-cdn-selector-panel">
                         <span class="launcher__dot" aria-hidden="true">
                             <svg class="launcher__bolt" viewBox="0 0 12 16"
                                 focusable="false">
@@ -2792,8 +2731,7 @@
                         changed: false,
                         entryCount: 0,
                         probePlan: [],
-                        availableHosts: [],
-                        nativeAkamaiAvailable: false
+                        availableHosts: []
                     };
                 }
 
@@ -2815,8 +2753,6 @@
                 state.lastWinner = result.winnerHost;
                 state.currentPlan = result.probePlan.slice();
                 state.availableHosts = result.availableHosts.slice();
-                state.nativeAkamaiAvailable =
-                    result.nativeAkamaiAvailable;
                 state.manualMatched = result.manualMatched;
                 state.manualMissed = result.manualMissed;
                 state.benchmarkWinner = bestHealthyHost(
@@ -3446,7 +3382,7 @@
             class PatchedXMLHttpRequest extends NativeXHR {
                 constructor() {
                     super();
-                    this.__biliAutoCdn = {
+                    this.__biliCdnSelector = {
                         url: '',
                         textDone: false,
                         text: '',
@@ -3456,14 +3392,14 @@
                 }
 
                 open(method, url, ...rest) {
-                    this.__biliAutoCdn = {
+                    this.__biliCdnSelector = {
                         url: requestUrlOf(url),
                         textDone: false,
                         text: '',
                         jsonDone: false,
                         json: null
                     };
-                    observeMediaRequest(this.__biliAutoCdn.url);
+                    observeMediaRequest(this.__biliCdnSelector.url);
                     return super.open(method, url, ...rest);
                 }
 
@@ -3472,17 +3408,17 @@
                     if (
                         !state.enabled ||
                         this.readyState !== 4 ||
-                        !isPlayUrlApi(this.__biliAutoCdn?.url)
+                        !isPlayUrlApi(this.__biliCdnSelector?.url)
                     ) {
                         return original;
                     }
 
-                    if (!this.__biliAutoCdn.textDone) {
-                        this.__biliAutoCdn.text =
+                    if (!this.__biliCdnSelector.textDone) {
+                        this.__biliCdnSelector.text =
                             processPayloadText(original, 'xhr').text;
-                        this.__biliAutoCdn.textDone = true;
+                        this.__biliCdnSelector.textDone = true;
                     }
-                    return this.__biliAutoCdn.text;
+                    return this.__biliCdnSelector.text;
                 }
 
                 get response() {
@@ -3490,19 +3426,19 @@
                     if (
                         !state.enabled ||
                         this.readyState !== 4 ||
-                        !isPlayUrlApi(this.__biliAutoCdn?.url)
+                        !isPlayUrlApi(this.__biliCdnSelector?.url)
                     ) {
                         return original;
                     }
 
                     if (this.responseType === 'json') {
-                        if (!this.__biliAutoCdn.jsonDone) {
-                            this.__biliAutoCdn.json =
+                        if (!this.__biliCdnSelector.jsonDone) {
+                            this.__biliCdnSelector.json =
                                 processPayloadObject(original, 'xhr-json')
                                     .payload;
-                            this.__biliAutoCdn.jsonDone = true;
+                            this.__biliCdnSelector.jsonDone = true;
                         }
-                        return this.__biliAutoCdn.json;
+                        return this.__biliCdnSelector.json;
                     }
 
                     if (
@@ -3587,8 +3523,6 @@
                         manualMatched: state.manualMatched,
                         manualMissed: state.manualMissed,
                         availableHosts: state.availableHosts.slice(),
-                        nativeAkamaiAvailable:
-                            state.nativeAkamaiAvailable,
                         health: Object.values(state.health).map(record => ({
                             host: record.host,
                             fresh: isFreshHealth(record, now),
@@ -3660,12 +3594,12 @@
             };
 
             try {
-                Object.defineProperty(root, '__BiliAutoCDN', {
+                Object.defineProperty(root, '__BiliCDNSelector', {
                     configurable: true,
                     value: Object.freeze(publicApi)
                 });
             } catch (_) {
-                root.__BiliAutoCDN = publicApi;
+                root.__BiliCDNSelector = publicApi;
             }
 
             state.benchmarkWinner = bestHealthyHost();
@@ -3695,8 +3629,9 @@
             UI_LAUNCHER_SIZE,
             UI_VIEWPORT_MARGIN,
             UI_DRAG_THRESHOLD_PX,
-            SAFE_GENERIC_HOSTS,
-            NATIVE_AKAMAI_ROUTE,
+            DOMESTIC_CDN_ROUTES,
+            DOMESTIC_CDN_HOSTS,
+            ROUTE_DEFS,
             DEFAULT_SETTINGS,
             normalizeSettings,
             stableUnique,

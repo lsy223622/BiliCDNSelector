@@ -13,7 +13,7 @@ body:
     id: version
     attributes:
       label: Script version
-      placeholder: "0.2.5"
+      placeholder: "0.1.0"
     validations:
       required: true
 
@@ -22,7 +22,7 @@ body:
     attributes:
       label: Environment
       description: 浏览器、userscript 管理器、操作系统、国家/地区和运营商
-      placeholder: "Chrome 140, Tampermonkey, macOS, US / Xfinity"
+      placeholder: "Chrome, Tampermonkey, Windows, Shanghai / China Telecom"
     validations:
       required: true
 
@@ -31,13 +31,23 @@ body:
     attributes:
       label: Selected route
       options:
-        - 自动选择
-        - B站原始
-        - Cosov
-        - 原生 Akamai
-        - Aliov
-        - 香港 EQ
-        - 其他或不确定
+        - Auto
+        - Bilibili Original
+        - Ali
+        - Alib
+        - Alio1
+        - Cos
+        - Cosb
+        - Coso1
+        - HW
+        - HWB
+        - HWO1
+        - 08c
+        - 08h
+        - 08ct
+        - TF-HW
+        - TF-TX
+        - Other or unknown
     validations:
       required: true
 
@@ -64,7 +74,7 @@ body:
     id: sanitized
     attributes:
       label: Sanitized diagnostics
-      description: 可附 __BiliAutoCDN.status() 输出；请再次确认没有完整签名 URL 或 token
+      description: 可附 __BiliCDNSelector.status() 输出；请再次确认没有完整签名 URL 或 token
       render: shell
 
   - type: checkboxes

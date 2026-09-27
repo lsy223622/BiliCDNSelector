@@ -1,16 +1,16 @@
 {
-  "name": "bilibili-accelerator",
-  "version": "0.2.5",
+  "name": "bilicdnselector",
+  "version": "0.1.0",
   "private": true,
-  "description": "Safely benchmark and route Bilibili video playback across native CDN endpoints.",
+  "description": "Automatically benchmarks and selects faster CDNs for Bilibili web videos.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/stabruriss/bilibili-accelerator.git"
+    "url": "https://github.com/lsy223622/BiliCDNSelector.git"
   },
   "scripts": {
-    "check": "node --check bilibili-accelerator.user.js",
-    "test": "node --test bilibili-accelerator.test.js",
+    "check": "node --check BiliCDNSelector.user.js",
+    "test": "node --test BiliCDNSelector.test.js",
     "ci": "npm run check && npm test"
   },
   "engines": {

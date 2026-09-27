@@ -1,6 +1,6 @@
 # Contributing
 
-感谢你愿意改进 Bilibili Accelerator。
+感谢你愿意改进 BiliCDNSelector。
 
 ## 开始之前
 

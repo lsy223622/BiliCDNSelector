@@ -2,14 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const core = require('./bilibili-accelerator.user.js');
+const core = require('./BiliCDNSelector.user.js');
 
 const COS =
-    'https://upos-sz-mirrorcosov.bilivideo.com/upgcxcode/01/23/video.m4s?deadline=1&token=a%2Fb+x&orderid=0&orderid=1';
+    'https://upos-sz-mirrornative.bilivideo.com/upgcxcode/01/23/video.m4s?deadline=1&token=a%2Fb+x&orderid=0&orderid=1';
 const AKAMAI =
     'https://upos-hz-mirrorakam.akamaized.net/upgcxcode/01/23/video.m4s?deadline=1&hdnts=st=1~exp=2~acl=%2F*~hmac=abc+def';
 const AUDIO_COS =
-    'https://upos-sz-mirrorcosov.bilivideo.com/upgcxcode/04/56/audio.m4s?deadline=1&token=audio';
+    'https://upos-sz-mirrornative.bilivideo.com/upgcxcode/04/56/audio.m4s?deadline=1&token=audio';
 
 function health(
     host,
@@ -50,13 +50,13 @@ function dashEntry(base, backups = []) {
 test('safeSwapHost preserves the signed suffix byte-for-byte', () => {
     const swapped = core.safeSwapHost(
         COS,
-        'upos-sz-mirroraliov.bilivideo.com'
+        'upos-sz-mirrorali.bilivideo.com'
     );
     assert.equal(
         swapped,
         COS.replace(
-            'upos-sz-mirrorcosov.bilivideo.com',
-            'upos-sz-mirroraliov.bilivideo.com'
+            'upos-sz-mirrornative.bilivideo.com',
+            'upos-sz-mirrorali.bilivideo.com'
         )
     );
     assert.equal(
@@ -66,7 +66,7 @@ test('safeSwapHost preserves the signed suffix byte-for-byte', () => {
     assert.equal(
         core.safeSwapHost(
             AKAMAI,
-            'upos-sz-mirrorcosov.bilivideo.com'
+            'upos-sz-mirrornative.bilivideo.com'
         ),
         null
     );
@@ -91,8 +91,8 @@ test('Akamai-only entries never synthesize a generic CDN URL', () => {
         data: { dash: { video: [entry], audio: [] } }
     };
     const records = {
-        'upos-sz-mirrorcosov.bilivideo.com': health(
-            'upos-sz-mirrorcosov.bilivideo.com',
+        'upos-sz-mirrornative.bilivideo.com': health(
+            'upos-sz-mirrornative.bilivideo.com',
             { now, worstMs: 100 }
         )
     };
@@ -111,17 +111,17 @@ test('an Akamai-first entry uses its exact bilivideo backup as donor', () => {
     };
 
     core.transformPlayInfo(payload, {}, Date.now(), {
-        safeHosts: ['upos-sz-mirroraliov.bilivideo.com']
+        safeHosts: ['upos-sz-mirrorali.bilivideo.com']
     });
 
     const ali = entry.backupUrl.find(
-        url => core.hostOf(url) === 'upos-sz-mirroraliov.bilivideo.com'
+        url => core.hostOf(url) === 'upos-sz-mirrorali.bilivideo.com'
     );
     assert.equal(
         ali,
         COS.replace(
-            'upos-sz-mirrorcosov.bilivideo.com',
-            'upos-sz-mirroraliov.bilivideo.com'
+            'upos-sz-mirrornative.bilivideo.com',
+            'upos-sz-mirrorali.bilivideo.com'
         )
     );
     assert.equal(ali.includes('hdnts='), false);
@@ -153,7 +153,7 @@ test('native Akamai can win without changing its signature string', () => {
     };
 
     const result = core.transformPlayInfo(payload, records, now, {
-        safeHosts: ['upos-sz-mirrorcosov.bilivideo.com']
+        safeHosts: ['upos-sz-mirrornative.bilivideo.com']
     });
 
     assert.equal(result.winnerHost, core.hostOf(AKAMAI));
@@ -175,8 +175,8 @@ test('native Akamai can win without changing its signature string', () => {
     );
 });
 
-test('manual generic target preserves the signed suffix and original chain', () => {
-    const aliHost = 'upos-sz-mirroraliov.bilivideo.com';
+test('manual domestic target preserves the signed suffix and original chain', () => {
+    const aliHost = 'upos-sz-mirrorali.bilivideo.com';
     const expectedAli = COS.replace(core.hostOf(COS), aliHost);
     const entry = dashEntry(COS, [AKAMAI]);
     const payload = {
@@ -202,56 +202,11 @@ test('manual generic target preserves the signed suffix and original chain', () 
     assert.deepEqual(entry.backup_url, entry.backupUrl);
 });
 
-test('manual native Akamai accepts only an original hdnts URL', () => {
-    const unsignedAkamai =
-        'https://upos-hz-mirrorakam.akamaized.net/upgcxcode/01/23/video.m4s?deadline=1&token=not-hdnts';
-    const entry = dashEntry(COS, [unsignedAkamai, AKAMAI]);
-    const payload = {
-        code: 0,
-        result: { dash: { video: [entry], audio: [] } }
-    };
-
-    const result = core.transformPlayInfo(payload, {}, Date.now(), {
-        mode: 'manual',
-        manualTarget: 'native-akamai'
-    });
-
-    assert.equal(result.manualMatched, 1);
-    assert.equal(entry.baseUrl, AKAMAI);
-    assert.equal(entry.base_url, AKAMAI);
-    assert.match(entry.baseUrl, /[?&]hdnts=/);
-    assert.equal(
-        entry.baseUrl,
-        'https://upos-hz-mirrorakam.akamaized.net/upgcxcode/01/23/video.m4s?deadline=1&hdnts=st=1~exp=2~acl=%2F*~hmac=abc+def'
-    );
-    assert.deepEqual(entry.backupUrl.slice(0, 2), [COS, unsignedAkamai]);
-    assert.deepEqual(entry.backup_url, entry.backupUrl);
-});
-
-test('manual native Akamai miss leaves an entry byte-for-byte unchanged', () => {
-    const entry = dashEntry(COS, []);
-    const payload = {
-        code: 0,
-        data: { dash: { video: [entry], audio: [] } }
-    };
-    const before = JSON.stringify(payload);
-
-    const result = core.transformPlayInfo(payload, {}, Date.now(), {
-        mode: 'manual',
-        manualTarget: 'native-akamai'
-    });
-
-    assert.equal(result.changed, false);
-    assert.equal(result.manualMatched, 0);
-    assert.equal(result.manualMissed, 1);
-    assert.equal(JSON.stringify(payload), before);
-});
-
 test('manual invalid target leaves the original entry unchanged', () => {
     for (const manualTarget of [
         'upos-hz-mirrorakam.akamaized.net',
         'evil.example',
-        'https://upos-sz-mirrorcosov.bilivideo.com/path'
+        'https://upos-sz-mirrornative.bilivideo.com/path'
     ]) {
         const entry = dashEntry(COS, [AKAMAI]);
         const payload = {
@@ -272,45 +227,14 @@ test('manual invalid target leaves the original entry unchanged', () => {
     }
 });
 
-test('manual Akamai match never crosses from video into audio', () => {
-    const video = dashEntry(COS, [AKAMAI]);
-    const audio = dashEntry(AUDIO_COS, []);
-    const payload = {
-        code: 0,
-        data: { dash: { video: [video], audio: [audio] } }
-    };
-    const audioBefore = JSON.stringify(audio);
-
-    const result = core.transformPlayInfo(payload, {}, Date.now(), {
-        mode: 'manual',
-        manualTarget: 'native-akamai'
-    });
-
-    assert.equal(result.manualMatched, 1);
-    assert.equal(result.manualMissed, 1);
-    assert.equal(video.baseUrl, AKAMAI);
-    assert.equal(video.base_url, AKAMAI);
-    assert.equal(JSON.stringify(audio), audioBefore);
-    assert.equal(
-        core
-            .collectOriginals(audio)
-            .some(url => core.isAkamaiHost(core.hostOf(url))),
-        false
-    );
-    assert.equal(
-        core.collectOriginals(audio).some(url => url.includes('/video.m4s')),
-        false
-    );
-});
-
 test('cold cache keeps Bilibili original base and adds synthetic fallbacks last', () => {
     const entry = dashEntry(COS, [AKAMAI]);
     const payload = { code: 0, result: { dash: { video: [entry] } } };
 
     core.transformPlayInfo(payload, {}, Date.now(), {
         safeHosts: [
-            'upos-sz-mirrorcosov.bilivideo.com',
-            'upos-sz-mirroraliov.bilivideo.com'
+            'upos-sz-mirrornative.bilivideo.com',
+            'upos-sz-mirrorali.bilivideo.com'
         ]
     });
 
@@ -318,8 +242,8 @@ test('cold cache keeps Bilibili original base and adds synthetic fallbacks last'
     assert.deepEqual(entry.backupUrl.slice(0, 2), [
         AKAMAI,
         COS.replace(
-            'upos-sz-mirrorcosov.bilivideo.com',
-            'upos-sz-mirroraliov.bilivideo.com'
+            'upos-sz-mirrornative.bilivideo.com',
+            'upos-sz-mirrorali.bilivideo.com'
         )
     ]);
 });
@@ -342,14 +266,14 @@ test('all fresh probe failures preserve only the exact original chain', () => {
             ok: false,
             successes: 0
         }),
-        'upos-sz-mirroraliov.bilivideo.com': health(
-            'upos-sz-mirroraliov.bilivideo.com',
+        'upos-sz-mirrorali.bilivideo.com': health(
+            'upos-sz-mirrorali.bilivideo.com',
             { now, ok: false, successes: 0 }
         )
     };
 
     core.transformPlayInfo(payload, records, now, {
-        safeHosts: ['upos-sz-mirroraliov.bilivideo.com']
+        safeHosts: ['upos-sz-mirrorali.bilivideo.com']
     });
 
     assert.equal(entry.baseUrl, COS);
@@ -359,8 +283,8 @@ test('all fresh probe failures preserve only the exact original chain', () => {
 test('durl and nested durls are both transformed', () => {
     const now = Date.now();
     const ALI = COS.replace(
-        'upos-sz-mirrorcosov.bilivideo.com',
-        'upos-sz-mirroraliov.bilivideo.com'
+        'upos-sz-mirrornative.bilivideo.com',
+        'upos-sz-mirrorali.bilivideo.com'
     );
     const payload = {
         code: 0,
@@ -374,14 +298,14 @@ test('durl and nested durls are both transformed', () => {
         }
     };
     const records = {
-        'upos-sz-mirroraliov.bilivideo.com': health(
-            'upos-sz-mirroraliov.bilivideo.com',
+        'upos-sz-mirrorali.bilivideo.com': health(
+            'upos-sz-mirrorali.bilivideo.com',
             { now, worstMs: 180 }
         )
     };
 
     const result = core.transformPlayInfo(payload, records, now, {
-        safeHosts: ['upos-sz-mirroraliov.bilivideo.com']
+        safeHosts: ['upos-sz-mirrorali.bilivideo.com']
     });
 
     assert.equal(result.entryCount, 2);
@@ -429,28 +353,14 @@ test('unsupported/error payloads remain untouched', () => {
     assert.equal(JSON.stringify(payload), before);
 });
 
-test('settings normalization migrates the legacy switch and rejects unsafe routes', () => {
+test('settings normalization accepts enabled flag and rejects unsafe routes', () => {
     assert.deepEqual(core.normalizeSettings(null, false), {
         version: 1,
         enabled: false,
         mode: 'auto',
-        manualTarget: core.SAFE_GENERIC_HOSTS[0],
+        manualTarget: core.DOMESTIC_CDN_HOSTS[0],
         autoProbe: true
     });
-    assert.deepEqual(
-        core.normalizeSettings({
-            enabled: true,
-            mode: 'manual',
-            manualTarget: core.NATIVE_AKAMAI_ROUTE
-        }),
-        {
-            version: 1,
-            enabled: true,
-            mode: 'manual',
-            manualTarget: core.NATIVE_AKAMAI_ROUTE,
-            autoProbe: true
-        }
-    );
     assert.equal(
         core.normalizeSettings({
             enabled: true,
@@ -465,7 +375,7 @@ test('settings normalization migrates the legacy switch and rejects unsafe route
             mode: 'manual',
             manualTarget: 'evil.example'
         }).manualTarget,
-        core.SAFE_GENERIC_HOSTS[0]
+        core.DOMESTIC_CDN_HOSTS[0]
     );
 });
 
@@ -656,8 +566,8 @@ test('adaptive work verifies the actual preferred host and retests only stale fa
     const now = 2_000_000_000_000;
     const old = now - core.HEALTH_VERIFY_INTERVAL_MS - 1;
     const cosHost = core.hostOf(COS);
-    const aliHost = core.SAFE_GENERIC_HOSTS[1];
-    const hkHost = core.SAFE_GENERIC_HOSTS[2];
+    const aliHost = core.DOMESTIC_CDN_HOSTS[1];
+    const hkHost = core.DOMESTIC_CDN_HOSTS[2];
     const routes = [
         { host: cosHost, url: COS },
         {
@@ -729,36 +639,6 @@ test('adaptive work verifies the actual preferred host and retests only stale fa
     );
 });
 
-test('probe planning reserves API-native and preset network slots', () => {
-    const otherHost = 'upos-sz-mirror08c.bilivideo.com';
-    const other = COS.replace(core.hostOf(COS), otherHost);
-    const candidates = core.buildCandidates([other, AKAMAI]);
-    const plan = core.planFromCandidates(candidates);
-
-    assert.deepEqual(
-        plan.map(route => route.host),
-        [
-            otherHost,
-            core.hostOf(AKAMAI),
-            ...core.SAFE_GENERIC_HOSTS
-        ]
-    );
-    assert.equal(plan.length, core.MAX_PROBE_HOSTS);
-
-    const deduped = core.planFromCandidates(
-        core.buildCandidates([COS, AKAMAI])
-    );
-    assert.deepEqual(
-        deduped.map(route => route.host),
-        [
-            core.hostOf(COS),
-            core.hostOf(AKAMAI),
-            core.SAFE_GENERIC_HOSTS[1],
-            core.SAFE_GENERIC_HOSTS[2]
-        ]
-    );
-});
-
 test('probe planning retains a cached winner from a later API backup', () => {
     const now = 2_000_000_000_000;
     const firstHost = 'upos-sz-mirror08c.bilivideo.com';
@@ -814,10 +694,9 @@ test('probe planning retains a cached winner from a later API backup', () => {
 function fakeBrowserRoot(payload, settings = null) {
     const now = Date.now();
     const hosts = [
-        'upos-sz-mirrorcosov.bilivideo.com',
-        'upos-hz-mirrorakam.akamaized.net',
-        'upos-sz-mirroraliov.bilivideo.com',
-        'cn-hk-eq-01-03.bilivideo.com'
+        core.hostOf(COS),
+        core.hostOf(AKAMAI),
+        ...core.DOMESTIC_CDN_HOSTS
     ];
     const cache = {
         version: 1,
@@ -833,11 +712,11 @@ function fakeBrowserRoot(payload, settings = null) {
         )
     };
     const storage = new Map([
-        ['kota.biliAutoCdn.health.v1', JSON.stringify(cache)]
+        ['biliCdnSelector.health.v1', JSON.stringify(cache)]
     ]);
     if (settings) {
         storage.set(
-            'kota.biliAutoCdn.settings.v1',
+            'biliCdnSelector.settings.v1',
             JSON.stringify(settings)
         );
     }
@@ -926,7 +805,7 @@ function prepareProbeBrowser(root) {
 }
 
 function ageHealthCache(storage, ageMs, legacy = false) {
-    const key = 'kota.biliAutoCdn.health.v1';
+    const key = 'biliCdnSelector.health.v1';
     const cache = JSON.parse(storage.get(key));
     const sampledAt = Date.now() - ageMs;
     for (const record of Object.values(cache.health)) {
@@ -946,8 +825,8 @@ async function waitForProbeIdle(root, requestLog, timeoutMs = 1000) {
     while (Date.now() < deadline) {
         if (
             requestLog.length &&
-            root.__BiliAutoCDN &&
-            !root.__BiliAutoCDN.status().probing
+            root.__BiliCDNSelector &&
+            !root.__BiliCDNSelector.status().probing
         ) {
             return;
         }
@@ -1030,7 +909,7 @@ test('browser shell performs one light Range without extending the full cache', 
     assert.equal(requests[0].url.includes(core.hostOf(COS)), true);
     assert.equal(requests[0].range, 'bytes=0-262143');
     const saved = JSON.parse(
-        storage.get('kota.biliAutoCdn.health.v1')
+        storage.get('biliCdnSelector.health.v1')
     ).health[core.hostOf(COS)];
     assert.equal(saved.sampledAt, sampledAt);
     assert.ok(saved.verifiedAt > sampledAt);
@@ -1050,10 +929,10 @@ test('automatic testing can be off while a manual retest still runs', async () =
         version: 1,
         enabled: true,
         mode: 'auto',
-        manualTarget: core.SAFE_GENERIC_HOSTS[0],
+        manualTarget: core.DOMESTIC_CDN_HOSTS[0],
         autoProbe: false
     });
-    storage.delete('kota.biliAutoCdn.health.v1');
+    storage.delete('biliCdnSelector.health.v1');
     prepareProbeBrowser(root);
     const requests = [];
     root.fetch = async (input, init) => {
@@ -1068,9 +947,9 @@ test('automatic testing can be off while a manual retest still runs', async () =
     await new Promise(resolve => setTimeout(resolve, 30));
 
     assert.deepEqual(requests, []);
-    assert.equal(root.__BiliAutoCDN.status().autoProbe, false);
-    assert.equal(root.__BiliAutoCDN.status().probing, false);
-    assert.equal(root.__BiliAutoCDN.retest(), true);
+    assert.equal(root.__BiliCDNSelector.status().autoProbe, false);
+    assert.equal(root.__BiliCDNSelector.status().probing, false);
+    assert.equal(root.__BiliCDNSelector.retest(), true);
     await waitForProbeIdle(root, requests);
     assert.ok(requests.length > 0);
 });
@@ -1089,10 +968,10 @@ test('automatic testing requeues after a rapid off-on cycle', async () => {
         version: 1,
         enabled: true,
         mode: 'auto',
-        manualTarget: core.SAFE_GENERIC_HOSTS[0],
+        manualTarget: core.DOMESTIC_CDN_HOSTS[0],
         autoProbe: true
     });
-    storage.delete('kota.biliAutoCdn.health.v1');
+    storage.delete('biliCdnSelector.health.v1');
     prepareProbeBrowser(root);
 
     let markFirstStarted;
@@ -1121,14 +1000,14 @@ test('automatic testing requeues after a rapid off-on cycle', async () => {
     core.install(root);
     root.__playinfo__ = structuredClone(payload);
     await firstStarted;
-    assert.equal(root.__BiliAutoCDN.setAutoProbe(false), true);
-    assert.equal(root.__BiliAutoCDN.setAutoProbe(true), true);
+    assert.equal(root.__BiliCDNSelector.setAutoProbe(false), true);
+    assert.equal(root.__BiliCDNSelector.setAutoProbe(true), true);
     releaseFirst();
     await waitForProbeIdle(root, requests);
 
     assert.ok(requests.length > 1);
-    assert.equal(root.__BiliAutoCDN.status().autoProbe, true);
-    assert.equal(root.__BiliAutoCDN.status().probing, false);
+    assert.equal(root.__BiliCDNSelector.status().autoProbe, true);
+    assert.equal(root.__BiliCDNSelector.status().probing, false);
 });
 
 test('an expired failed alternative is retested without rebenchmarking healthy routes', async () => {
@@ -1146,9 +1025,9 @@ test('an expired failed alternative is retested without rebenchmarking healthy r
         storage,
         core.HEALTH_VERIFY_INTERVAL_MS + 1000
     );
-    const cacheKey = 'kota.biliAutoCdn.health.v1';
+    const cacheKey = 'biliCdnSelector.health.v1';
     const cache = JSON.parse(storage.get(cacheKey));
-    const aliHost = core.SAFE_GENERIC_HOSTS[1];
+    const aliHost = core.DOMESTIC_CDN_HOSTS[1];
     cache.health[aliHost].ok = false;
     cache.health[aliHost].successes = 0;
     for (const [host, record] of Object.entries(cache.health)) {
@@ -1227,10 +1106,8 @@ test('failed light verification escalates to one complete benchmark', async () =
     root.__playinfo__ = structuredClone(payload);
     await waitForProbeIdle(root, requests);
 
-    // One quick Range, then two complete Ranges for the four deduplicated
-    // routes: API Cosov, native Akamai, Aliov and Hong Kong EQ.
-    assert.equal(requests.length, 1 + 2 * 4);
-    assert.equal(root.__BiliAutoCDN.status().phase, 'ready');
+    assert.equal(requests.length, 1 + 2 * core.planFromCandidates(core.buildCandidates([COS, AKAMAI])).length);
+    assert.equal(root.__BiliCDNSelector.status().phase, 'ready');
 });
 
 test('persisted original mode leaves intercepted playurl responses untouched', async () => {
@@ -1247,7 +1124,7 @@ test('persisted original mode leaves intercepted playurl responses untouched', a
         version: 1,
         enabled: false,
         mode: 'auto',
-        manualTarget: core.SAFE_GENERIC_HOSTS[0]
+        manualTarget: core.DOMESTIC_CDN_HOSTS[0]
     });
     core.install(root);
 
@@ -1256,7 +1133,7 @@ test('persisted original mode leaves intercepted playurl responses untouched', a
     const fetched = await (await root.fetch(api)).json();
     assert.equal(fetched.data.dash.video[0].baseUrl, AKAMAI);
     assert.deepEqual(fetched.data.dash.video[0].backupUrl, [COS]);
-    assert.equal(root.__BiliAutoCDN.status().enabled, false);
+    assert.equal(root.__BiliCDNSelector.status().enabled, false);
 });
 
 test('a safe manual route can re-enable the script from Bilibili original mode', () => {
@@ -1273,66 +1150,40 @@ test('a safe manual route can re-enable the script from Bilibili original mode',
         version: 1,
         enabled: false,
         mode: 'auto',
-        manualTarget: core.SAFE_GENERIC_HOSTS[0],
+        manualTarget: core.DOMESTIC_CDN_HOSTS[0],
         autoProbe: false
     });
     core.install(root);
 
-    assert.equal(root.__BiliAutoCDN.setAutoProbe(false), true);
-    assert.equal(root.__BiliAutoCDN.status().phase, 'off');
+    assert.equal(root.__BiliCDNSelector.setAutoProbe(false), true);
+    assert.equal(root.__BiliCDNSelector.status().phase, 'off');
     assert.equal(
-        root.__BiliAutoCDN.setMode(
+        root.__BiliCDNSelector.setMode(
             'manual',
-            core.SAFE_GENERIC_HOSTS[1]
+            core.DOMESTIC_CDN_HOSTS[1]
         ),
         true
     );
     assert.deepEqual(
         {
-            enabled: root.__BiliAutoCDN.status().enabled,
-            mode: root.__BiliAutoCDN.status().mode,
-            manualTarget: root.__BiliAutoCDN.status().manualTarget,
-            autoProbe: root.__BiliAutoCDN.status().autoProbe
+            enabled: root.__BiliCDNSelector.status().enabled,
+            mode: root.__BiliCDNSelector.status().mode,
+            manualTarget: root.__BiliCDNSelector.status().manualTarget,
+            autoProbe: root.__BiliCDNSelector.status().autoProbe
         },
         {
             enabled: true,
             mode: 'manual',
-            manualTarget: core.SAFE_GENERIC_HOSTS[1],
+            manualTarget: core.DOMESTIC_CDN_HOSTS[1],
             autoProbe: false
         }
     );
     assert.equal(
         JSON.parse(
-            storage.get('kota.biliAutoCdn.settings.v1')
+            storage.get('biliCdnSelector.settings.v1')
         ).autoProbe,
         false
     );
-});
-
-test('persisted manual Akamai mode applies through fetch interception', async () => {
-    const payload = {
-        code: 0,
-        data: {
-            dash: {
-                video: [dashEntry(COS, [AKAMAI])],
-                audio: []
-            }
-        }
-    };
-    const { root } = fakeBrowserRoot(payload, {
-        version: 1,
-        enabled: true,
-        mode: 'manual',
-        manualTarget: core.NATIVE_AKAMAI_ROUTE,
-        autoProbe: false
-    });
-    core.install(root);
-
-    const api =
-        'https://api.bilibili.com/x/player/wbi/playurl?bvid=BV1test&cid=1';
-    const fetched = await (await root.fetch(api)).json();
-    assert.equal(fetched.data.dash.video[0].baseUrl, AKAMAI);
-    assert.equal(root.__BiliAutoCDN.status().mode, 'manual');
 });
 
 test('manual routing can keep automatic health testing enabled', async () => {
@@ -1345,7 +1196,7 @@ test('manual routing can keep automatic health testing enabled', async () => {
             }
         }
     };
-    const manualTarget = core.SAFE_GENERIC_HOSTS[1];
+    const manualTarget = core.DOMESTIC_CDN_HOSTS[1];
     const { root, storage } = fakeBrowserRoot(payload, {
         version: 1,
         enabled: true,
@@ -1353,7 +1204,7 @@ test('manual routing can keep automatic health testing enabled', async () => {
         manualTarget,
         autoProbe: true
     });
-    storage.delete('kota.biliAutoCdn.health.v1');
+    storage.delete('biliCdnSelector.health.v1');
     prepareProbeBrowser(root);
     const requests = [];
     root.fetch = async (input, init) => {
@@ -1375,8 +1226,8 @@ test('manual routing can keep automatic health testing enabled', async () => {
         core.hostOf(root.__playinfo__.data.dash.video[0].baseUrl),
         manualTarget
     );
-    assert.equal(root.__BiliAutoCDN.status().mode, 'manual');
-    assert.equal(root.__BiliAutoCDN.status().autoProbe, true);
+    assert.equal(root.__BiliCDNSelector.status().mode, 'manual');
+    assert.equal(root.__BiliCDNSelector.status().autoProbe, true);
 });
 
 test('a newer SPA playurl invalidates the old pending probe plan', async () => {
@@ -1401,7 +1252,7 @@ test('a newer SPA playurl invalidates the old pending probe plan', async () => {
         }
     };
     const { root } = fakeBrowserRoot(first);
-    root.localStorage.removeItem('kota.biliAutoCdn.health.v1');
+    root.localStorage.removeItem('biliCdnSelector.health.v1');
     root.document = {
         hidden: false,
         documentElement: null,
@@ -1443,5 +1294,203 @@ test('a newer SPA playurl invalidates the old pending probe plan', async () => {
         probedUrls.every(url => url.includes('video-b.m4s')),
         true
     );
-    assert.equal(root.__BiliAutoCDN.status().probing, false);
+    assert.equal(root.__BiliCDNSelector.status().probing, false);
+});
+
+
+test('domestic catalog contains exactly the specified 14 UPOS hosts', () => {
+    const expected = [
+        'upos-sz-mirrorali.bilivideo.com',
+        'upos-sz-mirroralib.bilivideo.com',
+        'upos-sz-mirroralio1.bilivideo.com',
+        'upos-sz-mirrorcos.bilivideo.com',
+        'upos-sz-mirrorcosb.bilivideo.com',
+        'upos-sz-mirrorcoso1.bilivideo.com',
+        'upos-sz-mirrorhw.bilivideo.com',
+        'upos-sz-mirrorhwb.bilivideo.com',
+        'upos-sz-mirrorhwo1.bilivideo.com',
+        'upos-sz-mirror08c.bilivideo.com',
+        'upos-sz-mirror08h.bilivideo.com',
+        'upos-sz-mirror08ct.bilivideo.com',
+        'upos-tf-all-hw.bilivideo.com',
+        'upos-tf-all-tx.bilivideo.com'
+    ];
+    assert.equal(core.DOMESTIC_CDN_ROUTES.length, 14);
+    assert.deepEqual(core.DOMESTIC_CDN_ROUTES.map(route => route.host), expected);
+    assert.deepEqual(core.DOMESTIC_CDN_HOSTS, expected);
+});
+
+
+test('domestic synthesis preserves every signed suffix and native URL', () => {
+    const donor = 'https://upos-sz-mirrornative.bilivideo.com/upgcxcode/a%2Fb/video.m4s?token=x%2By&n=1&n=2#part';
+    const nativeAli = donor.replace('upos-sz-mirrornative', 'upos-sz-mirrorali').replace('token=x%2By', 'token=native');
+    const candidates = core.buildCandidates([donor, nativeAli]);
+    assert.equal(candidates.filter(candidate => candidate.original).length, 2);
+    assert.equal(candidates.length, 15);
+    assert.equal(new Set(candidates.map(candidate => candidate.host)).size, 15);
+    for (const host of core.DOMESTIC_CDN_HOSTS) {
+        const route = candidates.find(candidate => candidate.host === host);
+        assert.ok(route, host);
+        if (host === core.DOMESTIC_CDN_HOSTS[0]) {
+            assert.equal(route.url, nativeAli);
+            assert.equal(route.original, true);
+        } else {
+            assert.equal(route.url, donor.replace(core.hostOf(donor), host));
+            assert.equal(route.synthetic, true);
+        }
+    }
+});
+
+test('unsafe native donors never produce domestic synthetic routes', () => {
+    const path = '/upgcxcode/01/23/video.m4s?deadline=1&token=a%2Fb';
+    const hosts = [
+        'upos-hz-mirrorakam.akamaized.net',
+        'xy1x2x3x4xy.mcdn.bilivideo.cn',
+        '1.2.3.4',
+        'node.szbdyd.com',
+        'upos-sz-302.bilivideo.com',
+        'upos-sz-mirrorali.bilivideo.com:8443',
+        'media.bilivideo.com'
+    ];
+    for (const host of hosts) {
+        const url = 'https://' + host + path;
+        const candidates = core.buildCandidates([url]);
+        assert.equal(candidates.some(candidate => candidate.synthetic), false, host);
+    }
+});
+
+
+test('full domestic probe plan includes fourteen presets and two ordinary native routes', () => {
+    const native1 = COS.replace(core.hostOf(COS), 'upos-sz-mirrornative1.bilivideo.com');
+    const native2 = COS.replace(core.hostOf(COS), 'upos-sz-mirrornative2.bilivideo.com');
+    const candidates = core.buildCandidates([native1, AKAMAI, native2]);
+    const plan = core.planFromCandidates(candidates);
+    const hosts = plan.map(route => route.host);
+    assert.equal(hosts.length, 16);
+    assert.equal(new Set(hosts).size, 16);
+    assert.deepEqual(hosts.slice(0, 2), [core.hostOf(native1), core.hostOf(native2)]);
+    assert.deepEqual(hosts.slice(2), core.DOMESTIC_CDN_HOSTS);
+    assert.equal(hosts.includes(core.hostOf(AKAMAI)), false);
+});
+
+
+test('manual route definitions expose auto, original, and fourteen domestic presets', () => {
+    const ids = core.ROUTE_DEFS.map(route => route.id);
+    assert.deepEqual(ids.slice(0, 2), ['auto', 'original']);
+    assert.deepEqual(ids.slice(2), core.DOMESTIC_CDN_HOSTS);
+    assert.equal(new Set(ids).size, 16);
+    assert.equal(core.normalizeSettings({ mode: 'manual', manualTarget: 'native-akamai' }).manualTarget, core.DOMESTIC_CDN_HOSTS[0]);
+});
+
+
+test('healthy domestic winner becomes playback base while native URLs remain fallbacks', () => {
+    const now = Date.now();
+    const winnerHost = core.DOMESTIC_CDN_HOSTS[5];
+    const winnerUrl = COS.replace(core.hostOf(COS), winnerHost);
+    const entry = dashEntry(COS, [AKAMAI]);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const records = {
+        [winnerHost]: health(winnerHost, { now, worstMs: 100 }),
+        [core.hostOf(COS)]: health(core.hostOf(COS), { now, worstMs: 800 })
+    };
+    const result = core.transformPlayInfo(payload, records, now);
+    assert.equal(result.winnerHost, winnerHost);
+    assert.equal(entry.baseUrl, winnerUrl);
+    assert.equal(entry.base_url, winnerUrl);
+    assert.ok(entry.backupUrl.includes(COS));
+    assert.ok(entry.backupUrl.includes(AKAMAI));
+});
+
+test('failed domestic routes restore the exact native playback chain', () => {
+    const now = Date.now();
+    const entry = dashEntry(COS, [AKAMAI]);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const records = Object.fromEntries(core.DOMESTIC_CDN_HOSTS.map(host => [
+        host,
+        health(host, { now, ok: false, successes: 0 })
+    ]));
+    core.transformPlayInfo(payload, records, now);
+    assert.equal(entry.baseUrl, COS);
+    assert.deepEqual(entry.backupUrl, [AKAMAI]);
+});
+
+test('stable domestic health outranks a faster flaky route', () => {
+    const now = Date.now();
+    const candidates = core.buildCandidates([COS]);
+    const fast = core.DOMESTIC_CDN_HOSTS[0];
+    const stable = core.DOMESTIC_CDN_HOSTS[1];
+    const records = {
+        [fast]: health(fast, { now, successes: 1, attempts: 2, worstMs: 80, mbps: 200 }),
+        [stable]: health(stable, { now, successes: 2, attempts: 2, worstMs: 300, mbps: 20 })
+    };
+    assert.equal(core.rankCandidates(candidates, records, now)[0].host, stable);
+});
+
+test('fresh domestic cache avoids probing all fourteen routes again', () => {
+    const now = Date.now();
+    const routes = core.planFromCandidates(core.buildCandidates([COS, AKAMAI]));
+    const records = Object.fromEntries(routes.map(route => [
+        route.host,
+        health(route.host, { now })
+    ]));
+    assert.equal(routes.length, 16);
+    assert.equal(core.planProbeWork(routes, records, now, core.hostOf(COS)).kind, 'none');
+    assert.equal(core.planProbeWork(routes, records, now, core.hostOf(COS), true).routes.length, 16);
+});
+
+
+test('all failed synthetic routes preserve native order even with a PCDN primary', () => {
+    const now = Date.now();
+    const pcdn = 'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/01/23/video.m4s?os=mcdn';
+    const entry = dashEntry(pcdn, [COS, AKAMAI]);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const records = Object.fromEntries(core.DOMESTIC_CDN_HOSTS.map(host => [
+        host,
+        health(host, { now, ok: false, successes: 0 })
+    ]));
+    core.transformPlayInfo(payload, records, now);
+    assert.equal(entry.baseUrl, pcdn);
+    assert.deepEqual(entry.backupUrl, [COS, AKAMAI]);
+});
+
+
+test('manual TF route uses a safe donor and leaves native fallback intact', () => {
+    const host = core.DOMESTIC_CDN_HOSTS.at(-1);
+    const entry = dashEntry(COS, [AKAMAI]);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const result = core.transformPlayInfo(payload, {}, Date.now(), {
+        mode: 'manual',
+        manualTarget: host
+    });
+    assert.equal(result.manualMatched, 1);
+    assert.equal(entry.baseUrl, COS.replace(core.hostOf(COS), host));
+    assert.deepEqual(entry.backupUrl.slice(0, 2), [COS, AKAMAI]);
+
+    const noDonor = dashEntry(AKAMAI, []);
+    const second = { code: 0, data: { dash: { video: [noDonor] } } };
+    const missed = core.transformPlayInfo(second, {}, Date.now(), {
+        mode: 'manual',
+        manualTarget: host
+    });
+    assert.equal(missed.manualMissed, 1);
+    assert.equal(noDonor.baseUrl, AKAMAI);
+    assert.deepEqual(noDonor.backupUrl, []);
+});
+
+
+test('failed synthetic pool restores native order despite a healthy native backup', () => {
+    const now = Date.now();
+    const entry = dashEntry(COS, [AKAMAI]);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const records = Object.fromEntries(core.DOMESTIC_CDN_HOSTS.map(host => [
+        host,
+        health(host, { now, ok: false, successes: 0 })
+    ]));
+    records[core.hostOf(AKAMAI)] = health(core.hostOf(AKAMAI), {
+        now,
+        worstMs: 100
+    });
+    core.transformPlayInfo(payload, records, now);
+    assert.equal(entry.baseUrl, COS);
+    assert.deepEqual(entry.backupUrl, [AKAMAI]);
 });

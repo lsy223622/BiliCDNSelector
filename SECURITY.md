@@ -10,7 +10,7 @@
 或完整签名媒体 URL。
 
 优先使用仓库的
-[Private vulnerability reporting](https://github.com/stabruriss/bilibili-accelerator/security/advisories/new)
+[Private vulnerability reporting](https://github.com/lsy223622/BiliCDNSelector/security/advisories/new)
 提交报告。请包含：
 
 - 受影响版本。
