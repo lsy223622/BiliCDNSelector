@@ -1307,7 +1307,7 @@
                 panel.style.bottom = 'auto';
                 panel.style.width = `${Math.max(
                     1,
-                    Math.min(370, viewport.width - margin * 2)
+                    Math.min(430, viewport.width - margin * 2)
                 )}px`;
                 panel.style.maxHeight = `${Math.min(
                     650,
@@ -2093,14 +2093,7 @@
                             --cyan-soft: rgba(0, 174, 236, .16);
                             --ink: rgba(18, 21, 27, .97);
                             --line: rgba(255, 255, 255, .12);
-                            --muted: #929aa8;
                             --text: #f2f5f8;
-                            --amber: #f2b84b;
-                            --red: #ff6b70;
-                            font-family: -apple-system, BlinkMacSystemFont,
-                                "PingFang SC", "Segoe UI", sans-serif;
-                            font-size: 13px;
-                            line-height: 1.4;
                         }
                         *, *::before, *::after { box-sizing: border-box; }
                         [hidden] { display: none !important; }
@@ -2139,22 +2132,22 @@
                             place-items: center;
                             border-radius: 50%;
                             border: 1px solid rgba(255, 255, 255, .7);
-                            background: rgba(0, 174, 236, .68);
+                            background: var(--cyan);
+                            opacity: .6;
                             box-shadow:
                                 0 0 0 1px rgba(6, 16, 24, .55),
                                 0 3px 11px rgba(0, 0, 0, .3);
                             transition:
                                 width 140ms ease,
                                 height 140ms ease,
-                                filter 140ms ease,
-                                background 140ms ease;
+                                opacity 140ms ease;
                         }
                         .launcher:hover .launcher__dot,
                         .launcher:focus-visible .launcher__dot,
                         .launcher[aria-expanded="true"] .launcher__dot {
                             width: 20px;
                             height: 20px;
-                            filter: brightness(1.15);
+                            opacity: 1;
                         }
                         .launcher__bolt {
                             width: 8px;
@@ -2164,46 +2157,62 @@
                             pointer-events: none;
                         }
                         .launcher[data-phase="waiting"] .launcher__dot {
-                            background: rgba(242, 184, 75, .72);
+                            background: #f2b84b;
                         }
                         .launcher[data-phase="probing"] .launcher__dot {
                             animation: pulse 1.1s ease-in-out infinite;
                         }
+                        .launcher[data-phase="probing"]:hover .launcher__dot,
+                        .launcher[data-phase="probing"]:focus-visible .launcher__dot,
+                        .launcher[data-phase="probing"][aria-expanded="true"] .launcher__dot {
+                            animation: none;
+                            opacity: 1;
+                        }
                         .launcher[data-phase="failed"] .launcher__dot,
                         .launcher[data-phase="error"] .launcher__dot {
-                            background: rgba(255, 107, 112, .72);
+                            background: #ff6b70;
                         }
                         .launcher[data-phase="off"] .launcher__dot {
-                            background: rgba(115, 123, 136, .62);
+                            background: #737b88;
                         }
                         .panel {
                             position: absolute;
                             left: 0;
                             top: 36px;
-                            width: min(370px, calc(100vw - 24px));
+                            width: min(430px, calc(100vw - 24px));
                             max-height: min(650px, 76vh);
-                            overflow: auto;
+                            display: flex;
+                            flex-direction: column;
+                            overflow: hidden;
                             border: 1px solid rgba(255, 255, 255, .15);
                             border-radius: 14px;
                             color: var(--text);
                             background: var(--ink);
+                            font-family: "Microsoft YaHei UI", "Microsoft YaHei",
+                                "PingFang SC", "Noto Sans CJK SC", sans-serif;
+                            font-size: 15px;
+                            line-height: 1.45;
                             box-shadow:
                                 0 22px 70px rgba(0, 0, 0, .44),
                                 inset 0 1px rgba(255, 255, 255, .04);
                             backdrop-filter: blur(18px);
                             pointer-events: auto;
-                            scrollbar-width: thin;
-                            scrollbar-color: #4b5360 transparent;
                             transform-origin: right bottom;
                             animation: panel-in 140ms ease-out;
+                        }
+                        .route-scroll {
+                            min-height: 0;
+                            overflow-y: auto;
+                            scrollbar-width: thin;
+                            scrollbar-color: #4b5360 transparent;
                         }
                         .instrument {
                             display: flex;
                             justify-content: space-between;
                             padding: 10px 14px 6px;
-                            color: #697383;
-                            font: 600 9px/1.2 "SFMono-Regular", Consolas,
-                                monospace;
+                            color: #9faaba;
+                            font: 600 12px/1.2 "SFMono-Regular", Consolas,
+                                "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                             letter-spacing: .15em;
                         }
                         .panel__head {
@@ -2216,7 +2225,7 @@
                         .title { min-width: 0; flex: 1; }
                         .title h2 {
                             margin: 0;
-                            font-size: 18px;
+                            font-size: 20px;
                             line-height: 1.25;
                             letter-spacing: -.02em;
                         }
@@ -2228,7 +2237,7 @@
                             min-height: 28px;
                             color: #aab1bc;
                             cursor: pointer;
-                            font-size: 10px;
+                            font-size: 13px;
                             white-space: nowrap;
                         }
                         .auto-probe:has(input:disabled) {
@@ -2290,9 +2299,9 @@
                             display: flex;
                             justify-content: space-between;
                             margin: 11px 14px 6px;
-                            color: #737d8b;
-                            font: 650 9px/1.3 "SFMono-Regular", Consolas,
-                                monospace;
+                            color: #9faaba;
+                            font: 650 12px/1.3 "SFMono-Regular", Consolas,
+                                "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                             letter-spacing: .12em;
                             text-transform: uppercase;
                         }
@@ -2302,8 +2311,8 @@
                             display: flex;
                             align-items: flex-start;
                             gap: 10px;
-                            min-height: 54px;
-                            padding: 8px 7px;
+                            min-height: 64px;
+                            padding: 10px 7px;
                             border-radius: 9px;
                             cursor: pointer;
                         }
@@ -2323,8 +2332,8 @@
                         }
                         .route__marker {
                             flex: 0 0 auto;
-                            width: 15px;
-                            height: 15px;
+                            width: 17px;
+                            height: 17px;
                             margin-top: 2px;
                             border: 1px solid #5d6673;
                             border-radius: 50%;
@@ -2346,13 +2355,13 @@
                         }
                         .route__name {
                             color: #edf1f5;
-                            font-size: 12px;
+                            font-size: 15px;
                             font-weight: 650;
                         }
                         .route__metrics {
                             color: #a8b0bc;
-                            font: 10px/1.35 "SFMono-Regular", Consolas,
-                                monospace;
+                            font: 13px/1.35 "SFMono-Regular", Consolas,
+                                "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                             font-variant-numeric: tabular-nums;
                             text-align: right;
                         }
@@ -2360,9 +2369,9 @@
                         .route__meta {
                             min-width: 0;
                             overflow: hidden;
-                            color: #666f7d;
-                            font: 9px/1.35 "SFMono-Regular", Consolas,
-                                monospace;
+                            color: #929aa8;
+                            font: 12px/1.35 "SFMono-Regular", Consolas,
+                                "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                             text-overflow: ellipsis;
                             white-space: nowrap;
                         }
@@ -2376,8 +2385,8 @@
                             border: 1px solid #424a56;
                             border-radius: 4px;
                             color: #89929f;
-                            font: 600 8px/1.35 "SFMono-Regular", Consolas,
-                                monospace;
+                            font: 600 12px/1.35 "SFMono-Regular", Consolas,
+                                "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                         }
                         .badge--current {
                             border-color: rgba(0, 174, 236, .35);
@@ -2393,7 +2402,7 @@
                         .pending p {
                             margin: 0 0 9px;
                             color: #c4d4dc;
-                            font-size: 11px;
+                            font-size: 13px;
                         }
                         .pending__actions {
                             display: flex;
@@ -2408,7 +2417,7 @@
                             color: #cbd2db;
                             background: #272c34;
                             cursor: pointer;
-                            font-size: 11px;
+                            font-size: 13px;
                             font-weight: 620;
                         }
                         .button:hover:not(:disabled) {
@@ -2432,7 +2441,6 @@
                             display: flex;
                             align-items: center;
                             gap: 10px;
-                            margin-top: 10px;
                             padding: 11px 14px 13px;
                             border-top: 1px solid var(--line);
                         }
@@ -2440,7 +2448,7 @@
                         .footer__phase {
                             margin: 0;
                             color: #b2bac5;
-                            font-size: 10px;
+                            font-size: 13px;
                         }
                         .sr-only {
                             position: absolute;
@@ -2488,11 +2496,13 @@
                             <button class="close" data-ref="close"
                                 type="button" aria-label="收起面板">×</button>
                         </header>
-                        <div class="section-label">
-                            <span>ROUTING MODE</span><span>刷新后生效</span>
+                        <div class="route-scroll">
+                            <div class="section-label">
+                                <span>ROUTING MODE</span><span>刷新后生效</span>
+                            </div>
+                            <div class="route-list" data-ref="routeList"
+                                role="radiogroup" aria-label="视频 CDN 线路"></div>
                         </div>
-                        <div class="route-list" data-ref="routeList"
-                            role="radiogroup" aria-label="视频 CDN 线路"></div>
                         <div class="pending" data-ref="pending" hidden>
                             <p data-ref="pendingText"></p>
                             <div class="pending__actions">
