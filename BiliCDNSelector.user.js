@@ -2,7 +2,7 @@
 // @name         BiliCDNSelector
 // @name:zh-CN   BiliCDNSelector
 // @namespace    https://github.com/lsy223622/BiliCDNSelector
-// @version      0.1.0
+// @version      0.2.0
 // @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
 // @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
 // @author       stabruriss, lsy223622
@@ -41,7 +41,7 @@
     function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.1.0';
+        const VERSION = '0.2.0';
         const CACHE_VERSION = 1;
         const CACHE_KEY = 'biliCdnSelector.health.v1';
         const ENABLED_KEY = 'biliCdnSelector.enabled';

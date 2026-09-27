@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0] - 2026-09-28
+
+- Increased control-panel text size and specified CJK sans-serif fonts.
+- Kept the title, route-application prompt, and benchmark controls visible while the route list scrolls.
+- Made the launcher translucent until hovered or expanded while retaining its status colors.
+
 ## [0.1.0] - 2026-09-27
 
 - Renamed the fork to BiliCDNSelector with separate userscript and storage identifiers.
