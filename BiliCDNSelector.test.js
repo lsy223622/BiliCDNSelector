@@ -1494,3 +1494,31 @@ test('failed synthetic pool restores native order despite a healthy native backu
     assert.equal(entry.baseUrl, COS);
     assert.deepEqual(entry.backupUrl, [AKAMAI]);
 });
+
+test('a failed domestic route enters cooldown without hiding a healthy route', () => {
+    const now = Date.now();
+    const failedHost = core.DOMESTIC_CDN_HOSTS[0];
+    const healthyHost = core.DOMESTIC_CDN_HOSTS[1];
+    const failed = core.aggregateProbeSamples(failedHost, [
+        { ok: false, mbps: 0, ttfbMs: 0, totalMs: 6500 },
+        { ok: false, mbps: 0, ttfbMs: 0, totalMs: 6500 }
+    ], now);
+    const healthy = core.aggregateProbeSamples(healthyHost, [
+        { ok: true, mbps: 20, ttfbMs: 80, totalMs: 250 },
+        { ok: true, mbps: 18, ttfbMs: 90, totalMs: 270 }
+    ], now);
+    assert.equal(failed.ok, false);
+    assert.equal(healthy.ok, true);
+    assert.equal(core.healthTtlMs(failed), core.FAILED_HEALTH_TTL_MS);
+    assert.equal(core.healthTtlMs(healthy), core.HEALTH_TTL_MS);
+
+    const entry = dashEntry(COS);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const result = core.transformPlayInfo(payload, {
+        [failedHost]: failed,
+        [healthyHost]: healthy
+    }, now);
+    assert.equal(result.winnerHost, healthyHost);
+    assert.equal(core.hostOf(entry.baseUrl), healthyHost);
+    assert.ok(entry.backupUrl.includes(COS));
+});
