@@ -1983,6 +1983,16 @@
                 }
 
                 const selected = ui.pendingRoute || currentRouteId();
+                const fastestHost = DOMESTIC_CDN_HOSTS
+                    .filter(host => state.availableHosts.includes(host))
+                    .map(host => state.health[host])
+                    .filter(
+                        record =>
+                            record?.ok &&
+                            isFreshHealth(record) &&
+                            Number.isFinite(record.medianMbps)
+                    )
+                    .sort((a, b) => b.medianMbps - a.medianMbps)[0]?.host;
                 ui.refs.launcher.dataset.phase =
                     state.phase === 'error'
                         ? 'error'
@@ -1999,6 +2009,10 @@
                     refs.label.classList.toggle(
                         'route--disabled',
                         !availability.available
+                    );
+                    refs.label.classList.toggle(
+                        'route--fastest',
+                        route.id === fastestHost
                     );
 
                     if (route.id === 'auto' || route.id === 'original') {
@@ -2364,6 +2378,11 @@
                                 "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                             font-variant-numeric: tabular-nums;
                             text-align: right;
+                        }
+                        .route--fastest .route__name,
+                        .route--fastest .route__metrics,
+                        .route--fastest .route__meta {
+                            color: var(--cyan);
                         }
                         .route__bottom { margin-top: 3px; }
                         .route__meta {
