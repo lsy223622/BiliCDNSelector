@@ -2,7 +2,7 @@
 // @name         BiliCDNSelector
 // @name:zh-CN   BiliCDNSelector
 // @namespace    https://github.com/lsy223622/BiliCDNSelector
-// @version      0.2.3
+// @version      0.2.4
 // @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
 // @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
 // @author       stabruriss, lsy223622
@@ -41,7 +41,7 @@
     function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.2.3';
+        const VERSION = '0.2.4';
         const CACHE_VERSION = 1;
         const CACHE_KEY = 'biliCdnSelector.health.v1';
         const ENABLED_KEY = 'biliCdnSelector.enabled';
@@ -90,7 +90,7 @@
         const ROUTE_DEFS = Object.freeze([
             {
                 id: 'auto',
-                label: '自动选择',
+                label: '自动',
                 short: '自动',
                 description: ''
             },
@@ -2026,7 +2026,7 @@
                     refs.radio.checked = selected === route.id;
                     refs.name.textContent =
                         route.id === 'auto' && autoHost
-                            ? `自动选择（${
+                            ? `自动（${
                                   routeForHost(autoHost)?.label || '原始线路'
                               }）`
                             : route.label;
@@ -2046,14 +2046,13 @@
                         refs.metrics.textContent = route.description;
                     } else if (record) {
                         const age = formatProbeAge(record.sampledAt);
-                        const ageSuffix = age ? ` · ${age}` : '';
                         refs.metrics.textContent = record.ok
                             ? `${record.medianMbps.toFixed(
                                   1
-                              )} Mbps · TTFB ${record.medianTtfbMs.toFixed(
+                              )} Mbps/TTFB ${record.medianTtfbMs.toFixed(
                                   0
-                              )} ms${ageSuffix}`
-                            : `${record.successes}/${record.attempts} · 测试失败${ageSuffix}`;
+                              )} ms${age ? `/${age}` : ''}`
+                            : `${record.successes}/${record.attempts} · 测试失败${age ? ` · ${age}` : ''}`;
                     } else {
                         refs.metrics.textContent = '未测试';
                     }

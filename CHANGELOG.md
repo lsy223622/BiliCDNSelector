@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.4] - 2026-09-28
+
+- Shortened the automatic route label and compacted benchmark separators to reduce wrapping.
+
 ## [0.2.3] - 2026-09-28
 
 - Marked the benchmark's most stable route in blue.
