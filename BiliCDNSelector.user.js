@@ -2,7 +2,7 @@
 // @name         BiliCDNSelector
 // @name:zh-CN   BiliCDNSelector
 // @namespace    https://github.com/lsy223622/BiliCDNSelector
-// @version      0.2.2
+// @version      0.2.3
 // @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
 // @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
 // @author       stabruriss, lsy223622
@@ -41,7 +41,7 @@
     function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.2.2';
+        const VERSION = '0.2.3';
         const CACHE_VERSION = 1;
         const CACHE_KEY = 'biliCdnSelector.health.v1';
         const ENABLED_KEY = 'biliCdnSelector.enabled';
@@ -909,7 +909,10 @@
                     );
                 }
 
-                if (mode !== 'manual' || manualMatched) {
+                if (
+                    !options.observeOnly &&
+                    (mode !== 'manual' || manualMatched)
+                ) {
                     result.changed =
                         applyOrdering(entry, ordered) || result.changed;
                 }
@@ -1135,6 +1138,7 @@
                 benchmarkWinner: '',
                 observedHost: '',
                 currentPlan: [],
+                originalUrl: '',
                 selectionCandidates: [],
                 availableHosts: [],
                 manualMatched: 0,
@@ -1795,6 +1799,7 @@
                     ui.routeRefs.set(route.id, {
                         label,
                         radio,
+                        name,
                         metrics,
                         meta,
                         badges
@@ -1993,6 +1998,16 @@
                     state.selectionCandidates,
                     state.health
                 )[0]?.host;
+                const originalHost = hostOf(state.originalUrl);
+                const stableNative = state.selectionCandidates.some(
+                    candidate =>
+                        candidate.original &&
+                        candidate.host === state.benchmarkWinner
+                );
+                const stableRoute = state.currentPlan.length
+                    ? routeForHost(state.benchmarkWinner)?.id ||
+                      (stableNative ? 'original' : '')
+                    : '';
                 ui.refs.launcher.dataset.phase =
                     state.phase === 'error'
                         ? 'error'
@@ -2003,19 +2018,31 @@
                 for (const route of ROUTE_DEFS) {
                     const refs = ui.routeRefs.get(route.id);
                     const availability = availabilityForRoute(route);
-                    const record = healthForRoute(route);
+                    const record =
+                        route.id === 'auto'
+                            ? state.health[autoHost]
+                            : healthForRoute(route);
                     refs.radio.disabled = !availability.available;
                     refs.radio.checked = selected === route.id;
+                    refs.name.textContent =
+                        route.id === 'auto' && autoHost
+                            ? `自动选择（${
+                                  routeForHost(autoHost)?.label || '原始线路'
+                              }）`
+                            : route.label;
                     refs.label.classList.toggle(
                         'route--disabled',
                         !availability.available
                     );
                     refs.label.classList.toggle(
-                        'route--recommended',
-                        route.id === autoHost
+                        'route--stable',
+                        route.id === stableRoute
                     );
 
-                    if (route.id === 'auto' || route.id === 'original') {
+                    if (
+                        route.id === 'original' ||
+                        (route.id === 'auto' && !autoHost)
+                    ) {
                         refs.metrics.textContent = route.description;
                     } else if (record) {
                         const age = formatProbeAge(record.sampledAt);
@@ -2033,13 +2060,13 @@
 
                     if (!availability.available) {
                         refs.meta.textContent = availability.reason;
-                    } else if (
-                        route.id === 'auto' ||
-                        route.id === 'original'
-                    ) {
-                        refs.meta.textContent = '';
                     } else {
-                        refs.meta.textContent = route.id;
+                        refs.meta.textContent =
+                            route.id === 'auto'
+                                ? autoHost || ''
+                                : route.id === 'original'
+                                  ? originalHost || ''
+                                  : route.id;
                     }
                     refs.meta.title = refs.meta.textContent;
 
@@ -2379,9 +2406,9 @@
                             font-variant-numeric: tabular-nums;
                             text-align: right;
                         }
-                        .route--recommended .route__name,
-                        .route--recommended .route__metrics,
-                        .route--recommended .route__meta {
+                        .route--stable .route__name,
+                        .route--stable .route__metrics,
+                        .route--stable .route__meta {
                             color: var(--cyan);
                         }
                         .route__bottom { margin-top: 3px; }
@@ -2754,7 +2781,7 @@
             }
 
             function processPayloadObject(payload, source) {
-                if (!state.enabled || !payload || typeof payload !== 'object') {
+                if (!payload || typeof payload !== 'object') {
                     return {
                         payload,
                         changed: false,
@@ -2770,7 +2797,8 @@
                     Date.now(),
                     {
                         mode: state.mode,
-                        manualTarget: state.manualTarget
+                        manualTarget: state.manualTarget,
+                        observeOnly: !state.enabled
                     }
                 );
 
@@ -2781,14 +2809,27 @@
                 state.lastSource = source;
                 state.lastWinner = result.winnerHost;
                 state.currentPlan = result.probePlan.slice();
-                state.selectionCandidates = result.selectionCandidates;
+                if (
+                    source === 'fetch' ||
+                    source === 'xhr' ||
+                    source === 'xhr-json' ||
+                    !result.selectionCandidates.some(
+                        candidate => candidate.url === state.originalUrl
+                    )
+                ) {
+                    state.originalUrl =
+                        result.selectionCandidates.find(
+                            candidate => candidate.original
+                        )?.url || '';
+                    state.selectionCandidates = result.selectionCandidates;
+                }
                 state.availableHosts = result.availableHosts.slice();
                 state.manualMatched = result.manualMatched;
                 state.manualMissed = result.manualMissed;
                 state.benchmarkWinner = bestHealthyHost(
                     state.currentPlan.map(route => route.host)
                 );
-                if (state.mode === 'manual') {
+                if (state.enabled && state.mode === 'manual') {
                     state.phase = 'idle';
                     state.phaseNote = result.manualMissed
                         ? result.manualMatched
@@ -3382,7 +3423,7 @@
                 const rawUrl = requestUrlOf(input);
                 observeMediaRequest(rawUrl);
                 const promise = nativeFetch.apply(this, arguments);
-                if (!state.enabled || !isPlayUrlApi(rawUrl)) {
+                if (!isPlayUrlApi(rawUrl)) {
                     return promise;
                 }
 
@@ -3436,7 +3477,6 @@
                 get responseText() {
                     const original = super.responseText;
                     if (
-                        !state.enabled ||
                         this.readyState !== 4 ||
                         !isPlayUrlApi(this.__biliCdnSelector?.url)
                     ) {
@@ -3454,7 +3494,6 @@
                 get response() {
                     const original = super.response;
                     if (
-                        !state.enabled ||
                         this.readyState !== 4 ||
                         !isPlayUrlApi(this.__biliCdnSelector?.url)
                     ) {
@@ -3548,6 +3587,7 @@
                         preferredHost: state.lastWinner,
                         observedHost: state.observedHost,
                         benchmarkWinner: state.benchmarkWinner,
+                        originalHost: hostOf(state.originalUrl),
                         lastSource: state.lastSource,
                         probing: !!state.probePromise,
                         manualMatched: state.manualMatched,

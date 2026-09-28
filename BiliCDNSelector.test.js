@@ -853,6 +853,11 @@ test('browser shell rewrites playurl fetch and XHR getter responses', async () =
     const fetched = await (await root.fetch(api)).json();
     assert.equal(fetched.data.dash.video[0].baseUrl, COS);
     assert.equal(fetched.data.dash.video[0].backupUrl[0], AKAMAI);
+    root.__playinfo__ = structuredClone(fetched);
+    assert.equal(
+        root.__BiliCDNSelector.status().originalHost,
+        core.hostOf(AKAMAI)
+    );
 
     const xhr = new root.XMLHttpRequest();
     xhr.open('GET', api);
@@ -1133,7 +1138,42 @@ test('persisted original mode leaves intercepted playurl responses untouched', a
     const fetched = await (await root.fetch(api)).json();
     assert.equal(fetched.data.dash.video[0].baseUrl, AKAMAI);
     assert.deepEqual(fetched.data.dash.video[0].backupUrl, [COS]);
+    const xhr = new root.XMLHttpRequest();
+    xhr.open('GET', api);
+    xhr._responseText = JSON.stringify(structuredClone(payload));
+    xhr.readyState = 4;
+    assert.equal(
+        JSON.parse(xhr.responseText).data.dash.video[0].baseUrl,
+        AKAMAI
+    );
     assert.equal(root.__BiliCDNSelector.status().enabled, false);
+    assert.ok(
+        root.__BiliCDNSelector
+            .status()
+            .availableHosts.includes(core.hostOf(AKAMAI))
+    );
+});
+
+test('original mode can observe the native host without rewriting playback URLs', () => {
+    const now = Date.now();
+    const entry = dashEntry(COS, [AKAMAI]);
+    const payload = { code: 0, data: { dash: { video: [entry] } } };
+    const original = structuredClone(payload);
+    const preferred = core.DOMESTIC_CDN_HOSTS[0];
+    const records = {
+        [preferred]: health(preferred, { now, worstMs: 100 })
+    };
+
+    const result = core.transformPlayInfo(payload, records, now, {
+        observeOnly: true
+    });
+
+    assert.equal(
+        result.selectionCandidates.find(candidate => candidate.original).host,
+        core.hostOf(COS)
+    );
+    assert.equal(result.changed, false);
+    assert.deepEqual(payload, original);
 });
 
 test('a safe manual route can re-enable the script from Bilibili original mode', () => {

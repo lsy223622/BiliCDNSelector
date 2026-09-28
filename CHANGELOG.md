@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.3] - 2026-09-28
+
+- Marked the benchmark's most stable route in blue.
+- Displayed the automatic route's name, test result, and domain, plus the original route's domain.
+
 ## [0.2.2] - 2026-09-28
 
 - Matched the blue route highlight to the route that automatic selection would choose after benchmarking.
