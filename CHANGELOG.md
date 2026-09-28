@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.2] - 2026-09-28
+
+- Matched the blue route highlight to the route that automatic selection would choose after benchmarking.
+
 ## [0.2.1] - 2026-09-28
 
 - Highlighted the fastest tested domestic CDN route in blue and kept the highlight aligned with manual retests.

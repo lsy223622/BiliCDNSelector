@@ -2,7 +2,7 @@
 // @name         BiliCDNSelector
 // @name:zh-CN   BiliCDNSelector
 // @namespace    https://github.com/lsy223622/BiliCDNSelector
-// @version      0.2.1
+// @version      0.2.2
 // @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
 // @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
 // @author       stabruriss, lsy223622
@@ -41,7 +41,7 @@
     function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.2.1';
+        const VERSION = '0.2.2';
         const CACHE_VERSION = 1;
         const CACHE_KEY = 'biliCdnSelector.health.v1';
         const ENABLED_KEY = 'biliCdnSelector.enabled';
@@ -833,6 +833,7 @@
                 changed: false,
                 entryCount: 0,
                 probePlan: [],
+                selectionCandidates: [],
                 availableHosts: [],
                 winnerHost: '',
                 usedFreshHealth: false,
@@ -857,6 +858,10 @@
                 const candidates = buildCandidates(originals, safeHosts);
                 if (!candidates.length) {
                     return;
+                }
+
+                if (!result.selectionCandidates.length) {
+                    result.selectionCandidates = candidates;
                 }
 
                 result.availableHosts = stableUnique([
@@ -1130,6 +1135,7 @@
                 benchmarkWinner: '',
                 observedHost: '',
                 currentPlan: [],
+                selectionCandidates: [],
                 availableHosts: [],
                 manualMatched: 0,
                 manualMissed: 0,
@@ -1983,16 +1989,10 @@
                 }
 
                 const selected = ui.pendingRoute || currentRouteId();
-                const fastestHost = state.currentPlan
-                    .filter(route => DOMESTIC_CDN_HOSTS.includes(route.host))
-                    .map(route => state.health[route.host])
-                    .filter(
-                        record =>
-                            record?.ok &&
-                            isFreshHealth(record) &&
-                            Number.isFinite(record.medianMbps)
-                    )
-                    .sort((a, b) => b.medianMbps - a.medianMbps)[0]?.host;
+                const autoHost = rankCandidates(
+                    state.selectionCandidates,
+                    state.health
+                )[0]?.host;
                 ui.refs.launcher.dataset.phase =
                     state.phase === 'error'
                         ? 'error'
@@ -2011,8 +2011,8 @@
                         !availability.available
                     );
                     refs.label.classList.toggle(
-                        'route--fastest',
-                        route.id === fastestHost
+                        'route--recommended',
+                        route.id === autoHost
                     );
 
                     if (route.id === 'auto' || route.id === 'original') {
@@ -2379,9 +2379,9 @@
                             font-variant-numeric: tabular-nums;
                             text-align: right;
                         }
-                        .route--fastest .route__name,
-                        .route--fastest .route__metrics,
-                        .route--fastest .route__meta {
+                        .route--recommended .route__name,
+                        .route--recommended .route__metrics,
+                        .route--recommended .route__meta {
                             color: var(--cyan);
                         }
                         .route__bottom { margin-top: 3px; }
@@ -2781,6 +2781,7 @@
                 state.lastSource = source;
                 state.lastWinner = result.winnerHost;
                 state.currentPlan = result.probePlan.slice();
+                state.selectionCandidates = result.selectionCandidates;
                 state.availableHosts = result.availableHosts.slice();
                 state.manualMatched = result.manualMatched;
                 state.manualMissed = result.manualMissed;

@@ -1426,6 +1426,27 @@ test('stable domestic health outranks a faster flaky route', () => {
     assert.equal(core.rankCandidates(candidates, records, now)[0].host, stable);
 });
 
+test('current video candidates can be reranked after benchmarking', () => {
+    const now = Date.now();
+    const payload = {
+        code: 0,
+        data: { dash: { video: [dashEntry(COS, [AKAMAI])] } }
+    };
+    const result = core.transformPlayInfo(payload, {}, now);
+    const fast = core.DOMESTIC_CDN_HOSTS[0];
+    const chosen = core.DOMESTIC_CDN_HOSTS[1];
+    const records = {
+        [fast]: health(fast, { now, worstMs: 500, mbps: 200 }),
+        [chosen]: health(chosen, { now, worstMs: 100, mbps: 20 })
+    };
+
+    assert.equal(result.winnerHost, core.hostOf(COS));
+    assert.equal(
+        core.rankCandidates(result.selectionCandidates, records, now)[0].host,
+        chosen
+    );
+});
+
 test('fresh domestic cache avoids probing all fourteen routes again', () => {
     const now = Date.now();
     const routes = core.planFromCandidates(core.buildCandidates([COS, AKAMAI]));
