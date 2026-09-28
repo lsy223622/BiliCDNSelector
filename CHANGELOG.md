@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.1] - 2026-09-28
+
+- Highlighted the fastest tested domestic CDN route in blue and kept the highlight aligned with manual retests.
+
 ## [0.2.0] - 2026-09-28
 
 - Increased control-panel text size and specified CJK sans-serif fonts.
