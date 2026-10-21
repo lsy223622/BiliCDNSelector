@@ -63,4 +63,4 @@ npm test
 
 This project is based on [stabruriss/bilibili-accelerator](https://github.com/stabruriss/bilibili-accelerator), which provides the browser interception, candidate routing, benchmarking, ranking, fallback, and UI foundation. The domestic CDN host catalog was derived from [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus), specifically `lib/models/common/video/cdn_type.dart`.
 
-[MIT](LICENSE) © 2026 stabruriss. The upstream copyright notice is preserved.
+[MIT](LICENSE) © 2026 stabruriss, lsy223622. The upstream copyright notice is preserved.

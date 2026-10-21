@@ -63,4 +63,4 @@ npm test
 
 本项目基于 [stabruriss/bilibili-accelerator](https://github.com/stabruriss/bilibili-accelerator) 修改，其浏览器拦截、候选线路处理、测速、排序、回退和控制面板构成了本项目的基础。国内 CDN host 清单参考 [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus) 的 `lib/models/common/video/cdn_type.dart`。
 
-[MIT](LICENSE) © 2026 stabruriss。保留上游版权声明。
+[MIT](LICENSE) © 2026 stabruriss, lsy223622。保留上游版权声明。
