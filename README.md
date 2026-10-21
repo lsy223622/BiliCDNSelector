@@ -14,10 +14,21 @@ BiliCDNSelector 是一个用于 Bilibili 网页播放器的 CDN 测速与自动�
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)。
 2. 点击 [安装 BiliCDNSelector](https://raw.githubusercontent.com/lsy223622/BiliCDNSelector/main/BiliCDNSelector.user.js)。
-3. 如果同时安装了其他会改写 Bilibili 播放地址的脚本，请先禁用它们。
+3. 如果同时安装了其他会改写 Bilibili 播放地址的脚本，请避免同时启用多个 CDN 选择功能；已验证的搭配见下方兼容性说明。
 4. 打开或刷新 Bilibili 视频页。
 
 脚本通过 `@updateURL` 从本仓库的 `main` 分支检查更新。
+
+## 兼容性
+
+BiliCDNSelector 0.2.5 已针对 [Make Bilibili Great Than Ever Before](https://github.com/SukkaW/Make-Bilibili-Great-Than-Ever-Before) **1.9.1** 修复 XHR 响应读取递归和首屏播放数据监听冲突。兼容验证覆盖 Chromium 页面上下文中的两种加载顺序，并已收到实际使用通过反馈。
+
+同时使用时，请在对方脚本的菜单中保持以下两项关闭，由 BiliCDNSelector 负责 CDN 测速和线路选择：
+
+- 「防止叔叔用 P2P CDN 省下纸钱」（`no-p2p`）
+- 「多 CDN 分片并发并行下载视频」（`thread-ripper`）
+
+其他功能可以按需开启，无需调整两个脚本的加载顺序。
 
 ## 线路如何选择
 

@@ -2,7 +2,7 @@
 // @name         BiliCDNSelector
 // @name:zh-CN   BiliCDNSelector
 // @namespace    https://github.com/lsy223622/BiliCDNSelector
-// @version      0.2.4
+// @version      0.2.5
 // @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
 // @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
 // @author       stabruriss, lsy223622
@@ -41,7 +41,7 @@
     function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.2.4';
+        const VERSION = '0.2.5';
         const CACHE_VERSION = 1;
         const CACHE_KEY = 'biliCdnSelector.health.v1';
         const ENABLED_KEY = 'biliCdnSelector.enabled';
@@ -1117,6 +1117,7 @@
             const NativeHeaders = root.Headers;
             const nativeJsonParse = root.JSON.parse.bind(root.JSON);
             const nativeJsonStringify = root.JSON.stringify.bind(root.JSON);
+            const nativeDefineProperty = Object.defineProperty;
             const logPrefix = '[BiliCDNSelector]';
             const settings = loadSettings();
             const state = {
@@ -3449,6 +3450,15 @@
                     });
             };
 
+            function processXhrText(xhr, original) {
+                if (!xhr.__biliCdnSelector.textDone) {
+                    xhr.__biliCdnSelector.text =
+                        processPayloadText(original, 'xhr').text;
+                    xhr.__biliCdnSelector.textDone = true;
+                }
+                return xhr.__biliCdnSelector.text;
+            }
+
             class PatchedXMLHttpRequest extends NativeXHR {
                 constructor() {
                     super();
@@ -3482,12 +3492,7 @@
                         return original;
                     }
 
-                    if (!this.__biliCdnSelector.textDone) {
-                        this.__biliCdnSelector.text =
-                            processPayloadText(original, 'xhr').text;
-                        this.__biliCdnSelector.textDone = true;
-                    }
-                    return this.__biliCdnSelector.text;
+                    return processXhrText(this, original);
                 }
 
                 get response() {
@@ -3513,7 +3518,8 @@
                         this.responseType === '' ||
                         this.responseType === 'text'
                     ) {
-                        return this.responseText;
+                        // A preceding wrapper's responseText may read this.response.
+                        return processXhrText(this, original);
                     }
                     return original;
                 }
@@ -3523,55 +3529,74 @@
 
             function patchGlobalPlayInfo(name) {
                 const existing = Object.getOwnPropertyDescriptor(root, name);
-
-                // Do not replace an accessor installed by Bilibili or another
-                // extension. Fetch/XHR interception still covers future API
-                // responses, and an object returned by its getter can be safely
-                // transformed in place once.
-                if (existing && (existing.get || existing.set)) {
-                    try {
-                        const current = existing.get?.call(root);
-                        if (current && typeof current === 'object') {
-                            processPayloadObject(current, name);
-                        }
-                    } catch (_) {}
-                    return;
-                }
+                let value;
+                try {
+                    value = processPayloadObject(root[name], name).payload;
+                } catch (_) {}
 
                 if (existing && existing.configurable === false) {
-                    if (root[name] && typeof root[name] === 'object') {
-                        processPayloadObject(root[name], name);
-                    }
                     return;
                 }
 
-                let value =
-                    existing && 'value' in existing
-                        ? processPayloadObject(existing.value, name).payload
-                        : undefined;
-
                 try {
-                    Object.defineProperty(root, name, {
+                    const descriptor = {
                         configurable: true,
-                        enumerable: true,
+                        enumerable: existing?.enumerable ?? true,
                         get() {
                             return value;
                         },
                         set(nextValue) {
-                            value = processPayloadObject(
-                                nextValue,
-                                name
-                            ).payload;
+                            value = processPayloadObject(nextValue, name).payload;
                         }
-                    });
-                } catch (_) {
-                    if (root[name] && typeof root[name] === 'object') {
-                        processPayloadObject(root[name], name);
+                    };
+                    if (existing && !('value' in existing)) {
+                        descriptor.get = existing.get;
+                        descriptor.set = existing.set && function (nextValue) {
+                            existing.set.call(
+                                this,
+                                processPayloadObject(nextValue, name).payload
+                            );
+                        };
+                    } else if (existing?.writable === false) {
+                        descriptor.set = undefined;
                     }
-                }
+                    nativeDefineProperty(root, name, descriptor);
+                } catch (_) {}
             }
 
             patchGlobalPlayInfo('__playinfo__');
+
+            // Other document-start scripts may replace the trap before the inline
+            // playinfo assignment. Chain that replacement synchronously, then
+            // restore defineProperty once startup has finished.
+            if (root.document?.readyState === 'loading' && root.Object) {
+                const defineProperty = root.Object.defineProperty;
+                let watching = true;
+                const watchedDefineProperty = new Proxy(defineProperty, {
+                    apply(target, thisArg, args) {
+                        const result = Reflect.apply(target, thisArg, args);
+                        if (
+                            watching &&
+                            args[0] === root &&
+                            args[1] === '__playinfo__'
+                        ) {
+                            patchGlobalPlayInfo('__playinfo__');
+                        }
+                        return result;
+                    }
+                });
+                root.Object.defineProperty = watchedDefineProperty;
+                root.addEventListener(
+                    'DOMContentLoaded',
+                    () => {
+                        watching = false;
+                        if (root.Object.defineProperty === watchedDefineProperty) {
+                            root.Object.defineProperty = defineProperty;
+                        }
+                    },
+                    { once: true }
+                );
+            }
 
             const publicApi = {
                 version: VERSION,

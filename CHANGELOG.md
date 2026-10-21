@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.5] - 2026-10-21
+
+- Fixed recursive text XHR response getters when used with Make Bilibili Great Than Ever Before.
+- Preserved both scripts' embedded playinfo handlers across document-start installation order.
+- Documented compatibility with Make Bilibili Great Than Ever Before 1.9.1 with its `no-p2p` and `thread-ripper` options disabled; verified both loading orders and received successful real-world use feedback.
+
 ## [0.2.4] - 2026-09-28
 
 - Shortened the automatic route label and compacted benchmark separators to reduce wrapping.

@@ -875,6 +875,166 @@ test('browser shell rewrites playurl fetch and XHR getter responses', async () =
     assert.equal(jsonXhr.response.data.dash.video[0].baseUrl, COS);
 });
 
+// The peer's text getter reads this.response, and its playinfo trap replaces
+// the previous descriptor without delegating to it (MBGTBE 1.9.1).
+function installPeerPlayerHooks(root, captured) {
+    const PreviousXHR = root.XMLHttpRequest;
+    root.XMLHttpRequest = class extends PreviousXHR {
+        get response() {
+            return super.response;
+        }
+
+        get responseText() {
+            const response = this.response;
+            return typeof response === 'string' ? response : super.responseText;
+        }
+    };
+    let current = root.__playinfo__;
+    root.Object.defineProperty(root, '__playinfo__', {
+        configurable: true,
+        enumerable: true,
+        get() {
+            return current;
+        },
+        set(value) {
+            current = value;
+            captured.push(value);
+        }
+    });
+}
+
+function compatibilityBrowser() {
+    const payload = {
+        code: 0,
+        data: { dash: { video: [dashEntry(COS, [AKAMAI])], audio: [] } }
+    };
+    const { root } = fakeBrowserRoot(payload, {
+        enabled: true,
+        mode: 'manual',
+        manualTarget: 'upos-sz-mirrorali.bilivideo.com',
+        autoProbe: false
+    });
+    const listeners = [];
+    root.Object = { defineProperty: Object.defineProperty };
+    root.document = { readyState: 'loading', documentElement: null };
+    root.addEventListener = (name, callback) => {
+        if (name === 'DOMContentLoaded') listeners.push(callback);
+    };
+    return {
+        root,
+        payload,
+        loaded() {
+            root.document.readyState = 'interactive';
+            for (const callback of listeners) callback();
+        }
+    };
+}
+
+test('an uninitialized peer playinfo getter does not abort installation', () => {
+    const { root, payload } = compatibilityBrowser();
+    let current;
+    let assignments = 0;
+    root.Object.defineProperty(root, '__playinfo__', {
+        configurable: true,
+        get() {
+            if (!current) throw new Error('not initialized');
+            return current;
+        },
+        set(value) {
+            current = value;
+            assignments += 1;
+        }
+    });
+
+    assert.doesNotThrow(() => core.install(root));
+    assert.ok(root.__BiliCDNSelector);
+    assert.throws(() => root.__playinfo__, /not initialized/);
+    root.__playinfo__ = payload;
+    assert.equal(assignments, 1);
+    assert.strictEqual(root.__playinfo__, payload);
+    assert.equal(current.data.dash.video[0].baseUrl,
+        COS.replace('upos-sz-mirrornative', 'upos-sz-mirrorali'));
+});
+
+test('startup property interception preserves unrelated and locked descriptors', () => {
+    const { root, payload, loaded } = compatibilityBrowser();
+    const defineProperty = root.Object.defineProperty;
+    core.install(root);
+    const target = {};
+    assert.strictEqual(root.Object.defineProperty(target, '__playinfo__', {
+        value: payload
+    }), target);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(target, '__playinfo__'), {
+        value: payload, configurable: false, enumerable: false, writable: false
+    });
+    assert.throws(() => root.Object.defineProperty(target, '__playinfo__', {
+        value: null
+    }), TypeError);
+
+    const locked = { value: payload, configurable: false, enumerable: false, writable: false };
+    assert.strictEqual(root.Object.defineProperty(root, '__playinfo__', locked), root);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(root, '__playinfo__'), locked);
+    loaded();
+    assert.strictEqual(root.Object.defineProperty, defineProperty);
+});
+
+for (const peerFirst of [true, false]) {
+    const order = peerFirst ? 'peer first' : 'selector first';
+
+    test(`text and JSON playurl XHRs compose without recursion (${order})`, () => {
+        const { root, payload } = compatibilityBrowser();
+        const captured = [];
+        if (peerFirst) installPeerPlayerHooks(root, captured);
+        core.install(root);
+        if (!peerFirst) installPeerPlayerHooks(root, captured);
+
+        for (const responseType of ['', 'text', 'json']) {
+            const xhr = new root.XMLHttpRequest();
+            xhr.open('GET', 'https://api.bilibili.com/x/player/wbi/playurl?cid=1');
+            xhr.responseType = responseType;
+            xhr._responseText = JSON.stringify(payload);
+            xhr.readyState = 4;
+            const response = xhr.response;
+            const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+            assert.equal(parsed.data.dash.video[0].baseUrl,
+                COS.replace('upos-sz-mirrornative', 'upos-sz-mirrorali'));
+            assert.ok(parsed.data.dash.video[0].backupUrl.includes(AKAMAI));
+            if (responseType !== 'json') assert.equal(xhr.responseText, response);
+        }
+
+        const other = new root.XMLHttpRequest();
+        other.open('GET', 'https://api.bilibili.com/x/web-interface/view?bvid=BV1test');
+        other._responseText = JSON.stringify(payload);
+        other.readyState = 4;
+        assert.equal(other.response, JSON.stringify(payload));
+        assert.equal(other.responseText, JSON.stringify(payload));
+    });
+
+    test(`embedded playinfo reaches both scripts before the player reads it (${order})`, () => {
+        const { root, payload, loaded } = compatibilityBrowser();
+        const captured = [];
+        const defineProperty = root.Object.defineProperty;
+        if (peerFirst) installPeerPlayerHooks(root, captured);
+        core.install(root);
+        if (!peerFirst) installPeerPlayerHooks(root, captured);
+
+        root.__playinfo__ = structuredClone(payload);
+        assert.equal(root.__playinfo__.data.dash.video[0].baseUrl,
+            COS.replace('upos-sz-mirrornative', 'upos-sz-mirrorali'));
+        assert.equal(captured.length, 1);
+        assert.strictEqual(captured[0], root.__playinfo__);
+        assert.equal(root.__BiliCDNSelector.status().lastSource, '__playinfo__');
+        assert.equal(Object.getOwnPropertyDescriptor(root, '__playinfo__').configurable, true);
+
+        loaded();
+        assert.strictEqual(root.Object.defineProperty, defineProperty);
+        root.__playinfo__ = structuredClone(payload);
+        assert.equal(root.__playinfo__.data.dash.video[0].baseUrl,
+            COS.replace('upos-sz-mirrornative', 'upos-sz-mirrorali'));
+        assert.equal(captured.length, 2);
+    });
+}
+
 test('browser shell performs one light Range without extending the full cache', async () => {
     const payload = {
         code: 0,

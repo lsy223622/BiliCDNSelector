@@ -14,10 +14,21 @@ This project is not affiliated with or endorsed by Bilibili.
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
 2. [Install BiliCDNSelector](https://raw.githubusercontent.com/lsy223622/BiliCDNSelector/main/BiliCDNSelector.user.js).
-3. Disable other userscripts that rewrite Bilibili playback URLs.
+3. Avoid enabling multiple CDN selectors at the same time. See the compatibility section below for a verified configuration with other userscripts.
 4. Open or refresh a Bilibili video page.
 
 `@updateURL` points to this repository's `main` branch.
+
+## Compatibility
+
+BiliCDNSelector 0.2.5 fixes recursive XHR response getters and conflicting initial playinfo handlers when used with [Make Bilibili Great Than Ever Before](https://github.com/SukkaW/Make-Bilibili-Great-Than-Ever-Before) **1.9.1**. Compatibility checks cover both installation orders in Chromium's page context, and successful real-world use has also been reported.
+
+When using both scripts, keep these two options disabled in the other script's menu so BiliCDNSelector handles CDN benchmarking and route selection:
+
+- P2P CDN replacement (`no-p2p`)
+- Multi-CDN parallel downloading (`thread-ripper`)
+
+Other features can remain enabled as needed. Neither script requires a particular loading order.
 
 ## Route selection
 
