@@ -227,6 +227,140 @@ test('manual invalid target leaves the original entry unchanged', () => {
     }
 });
 
+test('manual video and audio use the best remaining tested route as fallback', () => {
+    const now = Date.now();
+    const manualHost = 'upos-sz-mirrorhwo1.bilivideo.com';
+    const bestHost = 'upos-sz-mirrorhwb.bilivideo.com';
+    const nextHost = 'upos-sz-mirrorali.bilivideo.com';
+    const records = {
+        [manualHost]: health(manualHost, { now, worstMs: 300 }),
+        [bestHost]: health(bestHost, { now, worstMs: 100 }),
+        [nextHost]: health(nextHost, { now, worstMs: 200 })
+    };
+    const payload = {
+        code: 0,
+        data: { dash: {
+            video: [dashEntry(COS, [AKAMAI])],
+            audio: [dashEntry(AUDIO_COS)]
+        } }
+    };
+
+    core.transformPlayInfo(payload, records, now, {
+        mode: 'manual', manualTarget: manualHost
+    });
+
+    for (const entry of [...payload.data.dash.video, ...payload.data.dash.audio]) {
+        assert.equal(core.hostOf(entry.baseUrl), manualHost);
+        assert.deepEqual(entry.backupUrl.slice(0, 2).map(core.hostOf), [bestHost, nextHost]);
+        assert.ok(entry.backupUrl.every(url => core.hostOf(url) !== manualHost));
+        assert.deepEqual(entry.backup_url, entry.backupUrl);
+    }
+});
+
+test('auto video and audio use the tested runner-up before native fallbacks', () => {
+    const now = Date.now();
+    const bestHost = 'upos-sz-mirrorhwo1.bilivideo.com';
+    const nextHost = 'upos-sz-mirrorhwb.bilivideo.com';
+    const payload = {
+        code: 0,
+        data: { dash: {
+            video: [dashEntry(COS, [AKAMAI])],
+            audio: [dashEntry(AUDIO_COS)]
+        } }
+    };
+
+    core.transformPlayInfo(payload, {
+        [bestHost]: health(bestHost, { now, worstMs: 100 }),
+        [nextHost]: health(nextHost, { now, worstMs: 200 })
+    }, now);
+
+    for (const entry of [...payload.data.dash.video, ...payload.data.dash.audio]) {
+        assert.equal(core.hostOf(entry.baseUrl), bestHost);
+        assert.equal(core.hostOf(entry.backupUrl[0]), nextHost);
+    }
+});
+
+test('playback chains keep safe fallbacks across URL aliases when MCDN is present', () => {
+    const mcdn = 'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/01/23/video.m4s?os=mcdn';
+    const marked = COS + '&os=mcdn';
+    const now = Date.now();
+    const failures = Object.fromEntries(core.DOMESTIC_CDN_HOSTS.map(host => [
+        host, health(host, { now, ok: false, successes: 0 })
+    ]));
+    for (const options of [{}, { mode: 'manual', manualTarget: 'upos-sz-mirrorali.bilivideo.com' }]) {
+        for (const records of [{}, failures]) {
+            const video = { ...dashEntry(mcdn, [COS, marked, AKAMAI]), url: mcdn, backup_url_list: [marked, mcdn] };
+            const audio = dashEntry(marked, [AUDIO_COS, mcdn]);
+            const durl = { url: mcdn, backup_url: [COS, marked], backup_url_list: [mcdn] };
+            const payload = { code: 0, data: { dash: { video: [video], audio: [audio] }, durl: [durl] } };
+
+            const result = core.transformPlayInfo(payload, records, now, options);
+
+            assert.equal(result.changed, true);
+            assert.equal(JSON.stringify(payload).includes('mcdn'), false);
+            assert.ok(core.collectOriginals(video).includes(COS));
+            assert.ok(core.collectOriginals(video).includes(AKAMAI));
+            assert.ok(core.collectOriginals(audio).includes(AUDIO_COS));
+            assert.ok(core.collectOriginals(durl).includes(COS));
+            const once = JSON.stringify(payload);
+            core.transformPlayInfo(payload, records, now, options);
+            assert.equal(JSON.stringify(payload), once);
+        }
+    }
+});
+
+test('an MCDN-only track cannot supply a playback URL', () => {
+    const mcdn = 'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/01/23/video.m4s?os=mcdn';
+    for (const options of [{}, { mode: 'manual', manualTarget: 'upos-sz-mirrorali.bilivideo.com' }]) {
+        const entry = { ...dashEntry(mcdn, [mcdn]), backup_url_list: [mcdn] };
+        const payload = { code: 0, data: { dash: { audio: [entry] } } };
+
+        const result = core.transformPlayInfo(payload, {}, Date.now(), options);
+
+        assert.equal(result.changed, true);
+        assert.deepEqual(core.collectOriginals(entry), []);
+        assert.equal(JSON.stringify(payload).includes('mcdn'), false);
+    }
+});
+
+test('observe-only mode preserves native MCDN URLs byte-for-byte', () => {
+    const mcdn = 'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/01/23/video.m4s?os=mcdn';
+    const payload = { code: 0, data: { dash: { video: [dashEntry(mcdn, [COS])] } } };
+    const before = JSON.stringify(payload);
+
+    const result = core.transformPlayInfo(payload, {}, Date.now(), { observeOnly: true });
+
+    assert.equal(result.changed, false);
+    assert.equal(JSON.stringify(payload), before);
+});
+
+test('fetch serializes URL alias corrections even when route order is unchanged', async () => {
+    const now = Date.now();
+    const payload = {
+        code: 0,
+        data: { dash: { video: [{ ...dashEntry(COS, [AKAMAI]), url: AKAMAI }] } }
+    };
+    const failures = Object.fromEntries(core.DOMESTIC_CDN_HOSTS.map(host => [
+        host, health(host, { now, ok: false, successes: 0 })
+    ]));
+    const { root, storage } = fakeBrowserRoot(payload, {
+        enabled: true, mode: 'auto', autoProbe: false
+    });
+    storage.set('biliCdnSelector.health.v1', JSON.stringify({
+        version: 1, health: failures
+    }));
+    core.install(root);
+
+    const response = await root.fetch('https://api.bilibili.com/x/player/wbi/playurl');
+    const rewritten = await response.json();
+    const entry = rewritten.data.dash.video[0];
+
+    assert.equal(entry.url, COS);
+    assert.equal(entry.baseUrl, COS);
+    assert.deepEqual(entry.backupUrl, [AKAMAI]);
+    assert.equal(core.transformPlayInfo(rewritten, failures, now).changed, false);
+});
+
 test('cold cache keeps Bilibili original base and adds synthetic fallbacks last', () => {
     const entry = dashEntry(COS, [AKAMAI]);
     const payload = { code: 0, result: { dash: { video: [entry] } } };
@@ -332,7 +466,7 @@ test('transforming twice is idempotent', () => {
 
 test('explicit PCDN is demoted behind official URLs', () => {
     const pcdn =
-        'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/01/23/video.m4s?os=mcdn';
+        'https://upos-sz-mirrornative.bilivideo.com:4483/upgcxcode/01/23/video.m4s';
     const entry = dashEntry(pcdn, [COS, AKAMAI]);
     const payload = { code: 0, data: { dash: { video: [entry] } } };
 
@@ -1662,7 +1796,7 @@ test('fresh domestic cache avoids probing all fourteen routes again', () => {
 
 test('all failed synthetic routes preserve native order even with a PCDN primary', () => {
     const now = Date.now();
-    const pcdn = 'https://xy1x2x3x4xy.mcdn.bilivideo.cn:4483/upgcxcode/01/23/video.m4s?os=mcdn';
+    const pcdn = 'https://upos-sz-mirrornative.bilivideo.com:4483/upgcxcode/01/23/video.m4s';
     const entry = dashEntry(pcdn, [COS, AKAMAI]);
     const payload = { code: 0, data: { dash: { video: [entry] } } };
     const records = Object.fromEntries(core.DOMESTIC_CDN_HOSTS.map(host => [

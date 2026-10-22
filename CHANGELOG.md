@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.6] - 2026-10-22
+
+- Ranked manual-route fallbacks using cached benchmark health while keeping the selected route first.
+- Applied playback ordering consistently across primary and backup URL aliases.
+
 ## [0.2.5] - 2026-10-21
 
 - Fixed recursive text XHR response getters when used with Make Bilibili Great Than Ever Before.

@@ -32,9 +32,9 @@ Other features can remain enabled as needed. Neither script requires a particula
 
 ## Route selection
 
-Bilibili's playurl API may supply only a small native CDN set. The script retains those exact URLs and derives 14 domestic CDN candidates from a compatible ordinary signed UPOS URL by changing only the hostname. The path, query order, escaping, and signature stay byte-for-byte intact. It then tests two 256 KiB Ranges per route serially and ranks routes using health metrics including success rate and worst completion time. Native Bilibili URLs remain in the playback fallback chain.
+Bilibili's playurl API may supply only a small native CDN set. The script derives 14 domestic CDN candidates from a compatible ordinary signed UPOS URL by changing only the hostname. The path, query order, escaping, and signature stay byte-for-byte intact. It then tests two 256 KiB Ranges per route serially and ranks routes using health metrics including success rate and worst completion time. Usable native URLs remain available as subsequent fallbacks.
 
-The presets are Ali, Alib, Alio1, Cos, Cosb, Coso1, HW, HWB, HWO1, 08c, 08h, 08ct, TF-HW, and TF-TX. The panel offers Auto, Bilibili Original, and each domestic route. If a manual route cannot be generated safely, playback keeps the native URLs.
+The presets are Ali, Alib, Alio1, Cos, Cosb, Coso1, HW, HWB, HWO1, 08c, 08h, 08ct, TF-HW, and TF-TX. The panel offers Auto, Bilibili Original, and each domestic route. Auto mode orders the primary and fallback routes by benchmark rank. Manual mode keeps the selected route first and ranks the remaining fallbacks the same way. Without fresh successful results, native fallback order is retained. If a manual route cannot be generated safely, playback keeps the usable native URLs.
 
 A complete successful benchmark can cover up to 16 routes: 14 presets and two native routes. At two 256 KiB Ranges each, that is about 8 MiB. Transfers are lower with fewer candidates or cached results. Successful results are cached for four hours, failed results for 15 minutes, and the preferred route receives lightweight verification at most once every 15 minutes. Background probing does not block initial playback. The panel's Retest action forces a new test of relevant routes.
 
@@ -42,7 +42,7 @@ A complete successful benchmark can cover up to 16 routes: 14 presets and two na
 
 - Only compatible ordinary UPOS URLs can be synthesis donors. Akamai, PCDN, MCDN, IP, 302 style, and special-port routes cannot serve as donors.
 - The script never synthesizes Akamai URLs. API-provided Akamai and other native URLs remain available for playback fallback.
-- If all synthetic routes fail, the original Bilibili primary and backup order is restored.
+- If all synthetic routes fail, the primary and backup order of usable native routes is restored.
 - Local storage contains settings, panel position, and per-host health summaries, never complete signed media URLs, credentials, cookies, or tokens.
 - The script sends no telemetry or network statistics.
 

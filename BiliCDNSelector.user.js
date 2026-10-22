@@ -2,7 +2,7 @@
 // @name         BiliCDNSelector
 // @name:zh-CN   BiliCDNSelector
 // @namespace    https://github.com/lsy223622/BiliCDNSelector
-// @version      0.2.5
+// @version      0.2.6
 // @description  Automatically benchmarks and selects faster CDNs for Bilibili web videos.
 // @description:zh-CN 为 Bilibili 网页视频测速并自动选择更优 CDN。
 // @author       stabruriss, lsy223622
@@ -41,7 +41,7 @@
     function createBiliCdnSelector() {
         'use strict';
 
-        const VERSION = '0.2.5';
+        const VERSION = '0.2.6';
         const CACHE_VERSION = 1;
         const CACHE_KEY = 'biliCdnSelector.health.v1';
         const ENABLED_KEY = 'biliCdnSelector.enabled';
@@ -308,6 +308,14 @@
             );
         }
 
+        function isMcdnUrl(rawUrl) {
+            const url = parseUrl(rawUrl);
+            return !!url && (
+                url.hostname.toLowerCase().includes('.mcdn.bilivideo.') ||
+                /(?:^|[?&])os=mcdn(?:&|$)/i.test(url.search)
+            );
+        }
+
         function isExplicitPcdn(rawUrl) {
             const url = parseUrl(rawUrl);
             if (!url) {
@@ -325,13 +333,11 @@
 
             return (
                 IPV4_RE.test(host) ||
-                host.includes('.mcdn.bilivideo.') ||
-                /^xy(?:\d+x){3}\d+xy\.mcdn\.bilivideo\./i.test(host) ||
+                isMcdnUrl(rawUrl) ||
                 PCDN_SUFFIXES.some(suffix => host.endsWith(suffix)) ||
                 (firstLabel.startsWith('upos-') && firstLabel.includes('302')) ||
                 host === 'upos-sz-mirror14b.bilivideo.com' ||
-                nonDefaultPort ||
-                /(?:^|[?&])os=mcdn(?:&|$)/i.test(url.search)
+                nonDefaultPort
             );
         }
 
@@ -638,7 +644,12 @@
                 .map(item => item.candidate);
         }
 
-        function rankManualCandidates(candidates, manualTarget) {
+        function rankManualCandidates(
+            candidates,
+            manualTarget,
+            health = {},
+            now = Date.now()
+        ) {
             const cold = coldOrder(candidates, true);
             const selected = DOMESTIC_CDN_HOSTS.includes(manualTarget)
                 ? cold.filter(
@@ -660,7 +671,7 @@
             );
             return {
                 ordered: selected.concat(
-                    cold.filter(
+                    rankCandidates(candidates, health, now).filter(
                         candidate => !selectedUrls.has(candidate.url)
                     )
                 ),
@@ -679,12 +690,16 @@
             const urls = stableUnique(
                 orderedCandidates.map(candidate => candidate.url)
             );
-            if (!entry || !urls.length) {
+            if (!entry) {
                 return false;
             }
 
-            const before = collectOriginals(entry);
-            const base = urls[0];
+            const keys = [
+                'baseUrl', 'base_url', 'url',
+                'backupUrl', 'backup_url', 'backup_url_list'
+            ];
+            const before = keys.map(key => entry[key]);
+            const base = urls[0] || '';
             const backups = urls.slice(1);
             const isDurl =
                 typeof entry.url === 'string' &&
@@ -698,11 +713,21 @@
             } else {
                 entry.baseUrl = base;
                 entry.base_url = base;
+                if (typeof entry.url === 'string') {
+                    entry.url = base;
+                }
                 entry.backupUrl = backups.slice();
                 entry.backup_url = backups.slice();
             }
+            if (Array.isArray(entry.backup_url_list)) {
+                entry.backup_url_list = backups.slice();
+            }
 
-            return !sameStringArray(before, collectOriginals(entry));
+            return keys.some((key, index) =>
+                Array.isArray(before[index]) && Array.isArray(entry[key])
+                    ? !sameStringArray(before[index], entry[key])
+                    : before[index] !== entry[key]
+            );
         }
 
         function walkMediaEntries(value, callback, depth = 0, seen = new WeakSet()) {
@@ -855,8 +880,19 @@
                 options.manualTarget || DEFAULT_SETTINGS.manualTarget;
 
             walkMediaEntries(payload, (entry, originals) => {
-                const candidates = buildCandidates(originals, safeHosts);
+                const playbackOriginals = options.observeOnly
+                    ? originals
+                    : originals.filter(url => !isMcdnUrl(url));
+                const removedMcdn = playbackOriginals.length !== originals.length;
+                const candidates = buildCandidates(playbackOriginals, safeHosts);
                 if (!candidates.length) {
+                    if (removedMcdn) {
+                        result.changed = applyOrdering(entry, []) || result.changed;
+                        result.entryCount += 1;
+                        if (mode === 'manual') {
+                            result.manualMissed += 1;
+                        }
+                    }
                     return;
                 }
 
@@ -874,7 +910,9 @@
                 if (mode === 'manual') {
                     const manual = rankManualCandidates(
                         candidates,
-                        manualTarget
+                        manualTarget,
+                        health,
+                        now
                     );
                     ordered = manual.ordered;
                     manualMatched = manual.matched;
@@ -911,7 +949,7 @@
 
                 if (
                     !options.observeOnly &&
-                    (mode !== 'manual' || manualMatched)
+                    (mode !== 'manual' || manualMatched || removedMcdn)
                 ) {
                     result.changed =
                         applyOrdering(entry, ordered) || result.changed;
